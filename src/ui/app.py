@@ -141,7 +141,7 @@ def load_products(category: str):
             products = loader.get_products(
                 category=cat_filter,
                 min_reviews=3,
-                limit=50,
+                limit=None,  # 페이지네이션으로 처리
             )
 
             st.session_state.products = products
@@ -199,15 +199,70 @@ def render_product_list():
     elif sort_option == "평점 낮은순":
         filtered_products.sort(key=lambda p: p.avg_rating)
 
-    st.markdown(f"**{len(filtered_products)}개** 제품")
+    # 페이지네이션 설정
+    products_per_page = 12  # 3열 x 4행
+    total_products = len(filtered_products)
+    total_pages = max(1, (total_products + products_per_page - 1) // products_per_page)
+
+    # 페이지 상태
+    if "product_list_page" not in st.session_state:
+        st.session_state.product_list_page = 0
+
+    # 검색/정렬 변경 시 페이지 리셋
+    current_page = st.session_state.product_list_page
+    if current_page >= total_pages:
+        current_page = 0
+        st.session_state.product_list_page = 0
+
+    # 페이지네이션 UI (상단)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col1:
+        st.markdown(f"**{total_products}개** 제품")
+    with col2:
+        if total_pages > 1:
+            st.markdown(f"<div style='text-align: center;'>{current_page + 1} / {total_pages} 페이지</div>", unsafe_allow_html=True)
+    with col3:
+        if total_pages > 1:
+            nav_cols = st.columns(2)
+            with nav_cols[0]:
+                if st.button("◀", key="prev_top", disabled=current_page == 0):
+                    st.session_state.product_list_page = current_page - 1
+                    st.rerun()
+            with nav_cols[1]:
+                if st.button("▶", key="next_top", disabled=current_page >= total_pages - 1):
+                    st.session_state.product_list_page = current_page + 1
+                    st.rerun()
+
     st.markdown("---")
+
+    # 현재 페이지 제품
+    start_idx = current_page * products_per_page
+    end_idx = min(start_idx + products_per_page, total_products)
+    page_products = filtered_products[start_idx:end_idx]
 
     # 제품 카드 그리드 (3열)
     cols = st.columns(3)
 
-    for i, product in enumerate(filtered_products):
+    for i, product in enumerate(page_products):
         with cols[i % 3]:
             render_product_card(product)
+
+    # 페이지네이션 UI (하단)
+    if total_pages > 1:
+        st.markdown("---")
+        bottom_cols = st.columns([1, 2, 1])
+        with bottom_cols[1]:
+            nav_cols = st.columns([1, 2, 1])
+            with nav_cols[0]:
+                if st.button("◀ 이전", key="prev_bottom", disabled=current_page == 0):
+                    st.session_state.product_list_page = current_page - 1
+                    st.rerun()
+            with nav_cols[1]:
+                st.markdown(f"<div style='text-align: center; padding-top: 5px;'>{current_page + 1} / {total_pages}</div>", unsafe_allow_html=True)
+            with nav_cols[2]:
+                if st.button("다음 ▶", key="next_bottom", disabled=current_page >= total_pages - 1):
+                    st.session_state.product_list_page = current_page + 1
+                    st.rerun()
 
 
 def render_product_card(product: Product):
@@ -308,49 +363,92 @@ def render_product_detail():
 
 def render_product_summary(product: Product):
     """제품 요약 탭."""
-    st.subheader("📊 리뷰 요약")
+    # 요약 탭 전용 컨테이너
+    summary_container = st.container()
 
-    # 감정 분포 차트
-    col1, col2 = st.columns(2)
+    with summary_container:
+        st.subheader("📊 리뷰 요약")
 
-    with col1:
-        st.markdown("**감정 분포**")
-        st.bar_chart(product.sentiment_distribution)
+        # 감정 분포 차트
+        col1, col2 = st.columns(2)
 
-    with col2:
-        st.markdown("**주요 언급 속성**")
-        if product.top_aspects:
-            # 속성별 언급 횟수 계산
-            from collections import Counter
-            aspect_counter: Counter = Counter()
-            for review in product.reviews:
-                for aspect in review.aspects:
-                    aspect_name = aspect.get("Aspect", "")
-                    if aspect_name:
-                        aspect_counter[aspect_name] += 1
+        with col1:
+            st.markdown("**감정 분포**")
+            st.bar_chart(product.sentiment_distribution)
 
-            top_5 = dict(aspect_counter.most_common(5))
-            st.bar_chart(top_5)
+        with col2:
+            st.markdown("**주요 언급 속성**")
+            if product.top_aspects:
+                # 속성별 언급 횟수 계산
+                from collections import Counter
+                aspect_counter: Counter = Counter()
+                for review in product.reviews:
+                    for aspect in review.aspects:
+                        aspect_name = aspect.get("Aspect", "")
+                        if aspect_name:
+                            aspect_counter[aspect_name] += 1
+
+                top_5 = dict(aspect_counter.most_common(5))
+                st.bar_chart(top_5)
+            else:
+                st.info("속성 정보가 없습니다.")
+
+        st.markdown("---")
+
+        # 인사이트
+        st.subheader("💡 주요 인사이트")
+
+        sentiment_ratio = product.get_sentiment_ratio()
+
+        if sentiment_ratio["긍정"] >= 70:
+            st.success(f"✅ 이 제품은 **{sentiment_ratio['긍정']:.0f}%**의 긍정 리뷰를 받고 있습니다.")
+        elif sentiment_ratio["부정"] >= 50:
+            st.warning(f"⚠️ 이 제품은 **{sentiment_ratio['부정']:.0f}%**의 부정 리뷰가 있어 주의가 필요합니다.")
         else:
-            st.info("속성 정보가 없습니다.")
+            st.info(f"📊 이 제품의 리뷰는 긍정 {sentiment_ratio['긍정']:.0f}%, 부정 {sentiment_ratio['부정']:.0f}%로 혼재되어 있습니다.")
 
-    st.markdown("---")
+        # 자주 언급되는 속성
+        if product.top_aspects:
+            st.markdown(f"🏷️ 가장 많이 언급되는 속성: **{', '.join(product.top_aspects[:3])}**")
 
-    # 인사이트
-    st.subheader("💡 주요 인사이트")
 
-    sentiment_ratio = product.get_sentiment_ratio()
+def highlight_aspect_in_text(full_text: str, aspect_text: str, sentiment: str) -> str:
+    """
+    전체 리뷰 텍스트에서 속성 관련 부분을 하이라이트.
 
-    if sentiment_ratio["긍정"] >= 70:
-        st.success(f"✅ 이 제품은 **{sentiment_ratio['긍정']:.0f}%**의 긍정 리뷰를 받고 있습니다.")
-    elif sentiment_ratio["부정"] >= 50:
-        st.warning(f"⚠️ 이 제품은 **{sentiment_ratio['부정']:.0f}%**의 부정 리뷰가 있어 주의가 필요합니다.")
-    else:
-        st.info(f"📊 이 제품의 리뷰는 긍정 {sentiment_ratio['긍정']:.0f}%, 부정 {sentiment_ratio['부정']:.0f}%로 혼재되어 있습니다.")
+    Args:
+        full_text: 전체 리뷰 텍스트
+        aspect_text: 속성 관련 텍스트 (하이라이트할 부분)
+        sentiment: 감정 ("긍정", "부정", "중립")
 
-    # 자주 언급되는 속성
-    if product.top_aspects:
-        st.markdown(f"🏷️ 가장 많이 언급되는 속성: **{', '.join(product.top_aspects[:3])}**")
+    Returns:
+        HTML 형식의 하이라이트된 텍스트
+    """
+    import html
+
+    # 감정별 스타일
+    styles = {
+        "긍정": "background-color: #e3f2fd; color: #1565c0; font-weight: bold; padding: 2px 4px; border-radius: 3px;",
+        "부정": "background-color: #ffebee; color: #c62828; font-weight: bold; padding: 2px 4px; border-radius: 3px;",
+        "중립": "background-color: #e8f5e9; color: #2e7d32; font-weight: bold; padding: 2px 4px; border-radius: 3px;",
+    }
+
+    style = styles.get(sentiment, styles["중립"])
+
+    # HTML 이스케이프
+    escaped_full = html.escape(full_text)
+    escaped_aspect = html.escape(aspect_text)
+
+    # 하이라이트 적용
+    if escaped_aspect and escaped_aspect in escaped_full:
+        highlighted = escaped_full.replace(
+            escaped_aspect,
+            f'<span style="{style}">{escaped_aspect}</span>',
+            1  # 첫 번째 매칭만
+        )
+        return highlighted
+
+    return escaped_full
 
 
 def render_product_aspects(product: Product):
@@ -361,7 +459,9 @@ def render_product_aspects(product: Product):
     from collections import Counter, defaultdict
 
     aspect_sentiment: dict[str, dict[str, int]] = defaultdict(lambda: {"긍정": 0, "부정": 0, "중립": 0})
-    aspect_texts: dict[str, list[str]] = defaultdict(list)
+
+    # 속성별 리뷰 데이터 수집 (전체 리뷰 + 속성 텍스트 + 감정)
+    aspect_reviews: dict[str, list[dict]] = defaultdict(list)
 
     polarity_map = {"1": "긍정", "0": "중립", "-1": "부정", 1: "긍정", 0: "중립", -1: "부정"}
 
@@ -369,13 +469,18 @@ def render_product_aspects(product: Product):
         for aspect in review.aspects:
             aspect_name = aspect.get("Aspect", "")
             polarity = aspect.get("SentimentPolarity", 0)
-            text = aspect.get("SentimentText", "")
+            aspect_text = aspect.get("SentimentText", "")
 
             if aspect_name:
                 sentiment_label = polarity_map.get(polarity, "중립")
                 aspect_sentiment[aspect_name][sentiment_label] += 1
-                if text:
-                    aspect_texts[aspect_name].append(text)
+
+                if aspect_text:
+                    aspect_reviews[aspect_name].append({
+                        "full_text": review.raw_text,
+                        "aspect_text": aspect_text,
+                        "sentiment": sentiment_label,
+                    })
 
     if not aspect_sentiment:
         st.info("속성 분석 데이터가 없습니다.")
@@ -406,18 +511,103 @@ def render_product_aspects(product: Product):
 
         st.markdown("---")
 
-        # 상세 테이블
-        st.markdown("**속성별 상세**")
-        for _, row in df.iterrows():
+        # 범례 표시
+        st.markdown("""
+        <div style="margin-bottom: 15px;">
+            <span style="background-color: #e3f2fd; color: #1565c0; padding: 3px 8px; border-radius: 3px; margin-right: 10px;">긍정</span>
+            <span style="background-color: #ffebee; color: #c62828; padding: 3px 8px; border-radius: 3px; margin-right: 10px;">부정</span>
+            <span style="background-color: #e8f5e9; color: #2e7d32; padding: 3px 8px; border-radius: 3px;">중립</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # 상세 리뷰
+        st.markdown("**속성별 상세 리뷰**")
+        for idx, row in df.iterrows():
             aspect = row["속성"]
             total = row["총합"]
             pos_ratio = row["긍정"] / total * 100 if total > 0 else 0
 
             with st.expander(f"**{aspect}** ({total}회 언급, 긍정 {pos_ratio:.0f}%)"):
-                # 샘플 텍스트
-                texts = aspect_texts.get(aspect, [])[:3]
-                for t in texts:
-                    st.markdown(f"> {t[:150]}...")
+                all_reviews = aspect_reviews.get(aspect, [])
+
+                if not all_reviews:
+                    st.write("리뷰 텍스트가 없습니다.")
+                    continue
+
+                # 감정 필터 토글
+                filter_cols = st.columns(3)
+                with filter_cols[0]:
+                    show_positive = st.toggle("😊 긍정", value=True, key=f"pos_{aspect}")
+                with filter_cols[1]:
+                    show_negative = st.toggle("😞 부정", value=True, key=f"neg_{aspect}")
+                with filter_cols[2]:
+                    show_neutral = st.toggle("😐 중립", value=True, key=f"neu_{aspect}")
+
+                # 선택된 감정만 필터링
+                selected_sentiments = []
+                if show_positive:
+                    selected_sentiments.append("긍정")
+                if show_negative:
+                    selected_sentiments.append("부정")
+                if show_neutral:
+                    selected_sentiments.append("중립")
+
+                filtered_reviews = [r for r in all_reviews if r["sentiment"] in selected_sentiments]
+
+                if not filtered_reviews:
+                    st.info("선택한 감정의 리뷰가 없습니다.")
+                    continue
+
+                # 페이지네이션 설정
+                reviews_per_page = 10
+                total_reviews = len(filtered_reviews)
+                total_pages = (total_reviews + reviews_per_page - 1) // reviews_per_page
+
+                # 페이지 상태 키
+                page_key = f"page_{aspect}"
+                if page_key not in st.session_state:
+                    st.session_state[page_key] = 0
+
+                current_page = st.session_state[page_key]
+
+                # 페이지네이션 UI
+                st.caption(f"총 {total_reviews}개 리뷰")
+
+                if total_pages > 1:
+                    page_cols = st.columns([1, 2, 1])
+                    with page_cols[0]:
+                        if st.button("◀ 이전", key=f"prev_{aspect}", disabled=current_page == 0):
+                            st.session_state[page_key] = current_page - 1
+                            st.rerun()
+                    with page_cols[1]:
+                        st.markdown(f"<div style='text-align: center;'>{current_page + 1} / {total_pages} 페이지</div>", unsafe_allow_html=True)
+                    with page_cols[2]:
+                        if st.button("다음 ▶", key=f"next_{aspect}", disabled=current_page >= total_pages - 1):
+                            st.session_state[page_key] = current_page + 1
+                            st.rerun()
+
+                # 현재 페이지 리뷰
+                start_idx = current_page * reviews_per_page
+                end_idx = min(start_idx + reviews_per_page, total_reviews)
+                page_reviews = filtered_reviews[start_idx:end_idx]
+
+                for i, review_data in enumerate(page_reviews):
+                    highlighted_html = highlight_aspect_in_text(
+                        review_data["full_text"],
+                        review_data["aspect_text"],
+                        review_data["sentiment"]
+                    )
+
+                    # 감정 아이콘
+                    emoji = {"긍정": "😊", "부정": "😞", "중립": "😐"}.get(review_data["sentiment"], "")
+
+                    st.markdown(
+                        f'<div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid {"#1565c0" if review_data["sentiment"] == "긍정" else "#c62828" if review_data["sentiment"] == "부정" else "#2e7d32"};">'
+                        f'<span style="font-size: 0.85em; color: #666;">{emoji} {review_data["sentiment"]}</span><br>'
+                        f'<span style="line-height: 1.6;">{highlighted_html}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
 
 
 def render_product_qa(product: Product):
@@ -599,11 +789,14 @@ def main():
         st.error("OpenAI API 키가 필요합니다.")
         st.stop()
 
-    # 페이지 라우팅
-    if st.session_state.current_page == "product_list":
-        render_product_list()
-    elif st.session_state.current_page == "product_detail":
-        render_product_detail()
+    # 페이지 라우팅 - 컨테이너로 격리하여 렌더링 충돌 방지
+    page_container = st.container()
+
+    with page_container:
+        if st.session_state.current_page == "product_list":
+            render_product_list()
+        elif st.session_state.current_page == "product_detail":
+            render_product_detail()
 
 
 if __name__ == "__main__":
