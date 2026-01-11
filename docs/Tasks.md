@@ -125,19 +125,27 @@
 
 ---
 
-### Epic 2.2: LangChain RAG Chain 구현
+### Epic 2.2: LangChain RAG Chain 구현 ✅
 
 | Task ID | Task | 상태 | 설명 |
 |---------|------|------|------|
-| 2.2.1 | [ ] LangChain 기본 설정 | 대기 | ChatOpenAI 초기화 |
-| 2.2.2 | [ ] Retriever 구성 | 대기 | ChromaDB 연동 |
-| 2.2.3 | [ ] 프롬프트 템플릿 설계 | 대기 | 시스템/유저 프롬프트 |
-| 2.2.4 | [ ] RetrievalQA Chain 구현 | 대기 | `src/chains/rag_chain.py` |
-| 2.2.5 | [ ] 출처(Source) 반환 로직 | 대기 | 참고 리뷰 원문 표기 |
-| 2.2.6 | [ ] Chain 스트리밍 설정 | 대기 | 실시간 응답 출력 |
-| 2.2.7 | [ ] RAG Chain 통합 테스트 | 대기 | E2E 질의응답 테스트 |
+| 2.2.1 | [x] LangChain 기본 설정 | 완료 | ChatOpenAI 초기화 |
+| 2.2.2 | [x] Retriever 구성 | 완료 | ChromaDB 연동 |
+| 2.2.3 | [x] 프롬프트 템플릿 설계 | 완료 | 시스템/유저 프롬프트 |
+| 2.2.4 | [x] RetrievalQA Chain 구현 | 완료 | `src/chains/rag_chain.py` |
+| 2.2.5 | [x] 출처(Source) 반환 로직 | 완료 | 참고 리뷰 원문 표기 |
+| 2.2.6 | [x] Chain 스트리밍 설정 | 완료 | 실시간 응답 출력 |
+| 2.2.7 | [x] RAG Chain 통합 테스트 | 완료 | E2E 질의응답 테스트 |
 
 **완료 기준:** "배송이 빠른가요?" 질문에 리뷰 근거 기반 답변 생성
+
+**구현 내용:**
+- `ReviewRAGChain`: RAG 체인 클래스 (query, stream, astream 메서드)
+- `RAGConfig`: 설정 데이터클래스 (모델, 온도, top_k 등)
+- `RAGResponse`: 응답 데이터클래스 (답변, 출처, 메타데이터)
+- 시스템 프롬프트: 리뷰 분석 전문가 역할, 근거 기반 답변 원칙
+- 스트리밍 지원 (동기/비동기)
+- 23개 단위 테스트 통과
 
 ---
 
@@ -328,12 +336,12 @@
 | Phase | Epic 수 | 완료 | 진행률 |
 |-------|---------|------|--------|
 | Phase 1: Foundation | 4 | 4 | 100% |
-| Phase 2: Core RAG | 3 | 1 | 33% |
+| Phase 2: Core RAG | 3 | 2 | 67% |
 | Phase 3: Agent System | 3 | 0 | 0% |
 | Phase 4: UI & Polish | 3 | 0 | 0% |
 | Phase 5: Deployment | 3 | 0 | 0% |
 | Phase 6: Testing & Docs | 2 | 1 | 50% |
-| **Total** | **18** | **6** | **33%** |
+| **Total** | **18** | **7** | **39%** |
 
 ---
 
@@ -346,7 +354,7 @@
 - [x] 1.3.1 ~ 1.3.5: AI Hub 데이터셋 통합 ✅
 - [x] 1.4.1 ~ 1.4.6: 데이터 전처리 ✅
 - [x] 2.1.1 ~ 2.1.6: 벡터 DB 연동 ✅
-- [ ] 2.2.1 ~ 2.2.7: RAG Chain
+- [x] 2.2.1 ~ 2.2.7: RAG Chain ✅
 - [ ] 4.1.1 ~ 4.1.6: 기본 UI
 
 → 위 태스크 완료 시 **MVP 데모 가능**
@@ -361,4 +369,4 @@
 
 ---
 
-*최종 업데이트: 2025-01-10*
+*최종 업데이트: 2025-01-11*
