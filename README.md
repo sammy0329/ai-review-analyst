@@ -43,6 +43,7 @@
 | **팩트 기반 요약** | 긍/부정 비율 시각화 및 키워드별 장단점(맛, 배송, 가성비) 분석 | `Prompt Engineering` |
 | **시맨틱 Q&A** | "이거 3살 아기가 먹어도 돼?" 같은 자연어 질문에 리뷰 근거로 답변 | `RAG`, `Vector DB` |
 | **비교 분석** | A상품(가성비) vs B상품(고품질) 중 내게 맞는 상품 추천 | `Multi-Agent`, `Reasoning` |
+| **속성 추출** | Raw 리뷰에서 가격/디자인/품질/배송 등 속성별 감정 자동 분석 | `LLM Prompting`, `Structured Output` |
 | **할루시네이션 방지** | 답변 생성 시 참고한 실제 리뷰 원문(출처) 표기 | `Source Citation` |
 
 ---
@@ -224,21 +225,37 @@ Output:
 - 추천: "빠른 배송을 원하시면 B상품을 추천드립니다."
 ```
 
+### 4. Aspect Extraction (속성 추출)
+```
+Input: "가격은 좀 비싸지만 소재가 정말 좋아요. 배송도 빨랐습니다."
+Output:
+- 가격: 부정 (비싸다)
+- 소재/품질: 긍정 (좋다)
+- 배송: 긍정 (빠르다)
+
+→ 제품별 속성 감정 분포 차트 시각화
+→ 여러 제품 속성별 비교 분석
+```
+
 ---
 
 ## Development Roadmap
 
-### Phase 1: Foundation (50% 완료)
+### Phase 1: Foundation (100% 완료)
 - [x] Project setup & documentation
 - [x] Playwright crawler implementation (봇 탐지로 제한적)
-- [ ] AI Hub 공개 데이터셋 통합 (250K+ 이커머스 리뷰)
-- [ ] Data preprocessing pipeline
+- [x] AI Hub 공개 데이터셋 통합 (225K+ 이커머스 리뷰)
+- [x] Data preprocessing pipeline
 
-### Phase 2-5: Core Development
-- [ ] ChromaDB integration & embedding pipeline
-- [ ] LangChain RAG chain
+### Phase 2: Core RAG (75% 완료)
+- [x] ChromaDB integration & embedding pipeline
+- [x] LangChain RAG chain
+- [x] Prompt engineering (Q&A, 요약, 비교, 감성분석)
+- [ ] **LLM 기반 속성 추출 시스템** (진행 예정)
+
+### Phase 3-5: Agent & Deployment
 - [ ] LangGraph multi-agent system
-- [ ] Streamlit dashboard
+- [ ] Streamlit dashboard enhancement
 - [ ] Docker & AWS EC2 deployment
 
 ---
