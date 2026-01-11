@@ -35,7 +35,7 @@ st.set_page_config(
     page_title="AI Review Analyst",
     page_icon="🛒",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 
@@ -86,81 +86,13 @@ init_session_state()
 
 
 # =============================================================================
-# 사이드바
+# API 체크
 # =============================================================================
 
-def render_sidebar():
-    """사이드바 렌더링."""
-    with st.sidebar:
-        st.title("🛒 AI Review Analyst")
-        st.markdown("---")
-
-        # API 키 상태 확인
-        api_key = os.getenv("OPENAI_API_KEY")
-        if api_key:
-            st.success("✅ OpenAI API 연결됨")
-        else:
-            st.error("❌ OPENAI_API_KEY 필요")
-            st.info("`.env` 파일에 API 키를 설정하세요.")
-            return False
-
-        st.markdown("---")
-
-        # 카테고리 필터
-        st.subheader("🏷️ 카테고리")
-        categories = ["전체", "패션", "화장품", "가전", "IT기기", "생활용품"]
-        selected_category = st.selectbox(
-            "카테고리 선택",
-            categories,
-            key="category_filter",
-        )
-
-        # 제품 로드 버튼
-        if st.button("📦 제품 불러오기", use_container_width=True):
-            load_products(selected_category)
-
-        st.markdown("---")
-
-        # 현재 상태 표시
-        if st.session_state.products:
-            st.info(f"📦 {len(st.session_state.products)}개 제품 로드됨")
-
-        if st.session_state.selected_product:
-            st.success(f"📌 {st.session_state.selected_product.name[:20]}...")
-
-        # 제품 비교 섹션
-        if st.session_state.compare_products:
-            st.markdown("---")
-            st.subheader("📊 제품 비교")
-            st.caption(f"{len(st.session_state.compare_products)}/4개 선택됨")
-
-            for i, product in enumerate(st.session_state.compare_products):
-                col1, col2 = st.columns([4, 1])
-                with col1:
-                    st.text(f"{i+1}. {product.name[:15]}...")
-                with col2:
-                    if st.button("❌", key=f"remove_compare_{i}"):
-                        st.session_state.compare_products.pop(i)
-                        st.rerun()
-
-            if len(st.session_state.compare_products) >= 2:
-                if st.button("🔍 비교하기", use_container_width=True, type="primary"):
-                    st.session_state.current_page = "compare"
-                    st.rerun()
-
-            if st.button("🗑️ 전체 해제", use_container_width=True):
-                st.session_state.compare_products = []
-                st.rerun()
-
-        # 홈으로 돌아가기
-        if st.session_state.current_page in ["product_detail", "compare"]:
-            st.markdown("---")
-            if st.button("🏠 제품 목록으로", use_container_width=True):
-                st.session_state.current_page = "product_list"
-                st.session_state.selected_product = None
-                st.rerun()
-
-        return True
+def check_api_key():
+    """API 키 확인."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    return bool(api_key)
 
 
 # =============================================================================
@@ -196,30 +128,60 @@ def load_products(category: str):
 
 def render_product_list():
     """제품 목록 페이지 렌더링."""
-    st.title("🛒 제품 목록")
-    st.markdown("리뷰를 분석하고 싶은 제품을 선택하세요.")
+    st.title("🛒 AI Review Analyst")
 
     products = st.session_state.products
 
-    if not products:
-        st.info("👈 왼쪽 사이드바에서 제품을 불러오세요.")
+    # 상단: 카테고리 선택 + 검색 + 정렬 + 비교
+    col_cat, col_search, col_sort, col_compare = st.columns([1.5, 2, 1, 1.5])
 
-        # 빠른 시작 버튼
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            if st.button("🚀 화장품 제품 불러오기", use_container_width=True):
-                load_products("화장품")
-        return
+    with col_cat:
+        categories = ["전체", "패션", "화장품", "가전", "IT기기", "생활용품"]
+        selected_category = st.selectbox(
+            "카테고리",
+            categories,
+            key="category_filter",
+        )
 
-    # 검색 및 정렬
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        search_query = st.text_input("🔍 제품 검색", placeholder="제품명 검색...")
-    with col2:
+    with col_search:
+        search_query = st.text_input("🔍 검색", placeholder="제품명 검색...", label_visibility="collapsed")
+
+    with col_sort:
         sort_option = st.selectbox(
             "정렬",
             ["리뷰 많은순", "평점 높은순", "평점 낮은순"],
+            label_visibility="collapsed",
         )
+
+    with col_compare:
+        compare_count = len(st.session_state.compare_products)
+        if compare_count >= 2:
+            if st.button(f"📊 비교하기 ({compare_count})", use_container_width=True, type="primary"):
+                st.session_state.current_page = "compare"
+                st.rerun()
+        elif compare_count > 0:
+            st.caption(f"📊 {compare_count}/4 선택됨")
+        else:
+            st.caption("📊 비교할 제품 선택")
+
+    # 제품이 없으면 로드 안내
+    if not products:
+        st.markdown("---")
+        st.info("카테고리를 선택하고 제품을 불러오세요.")
+
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("📦 제품 불러오기", use_container_width=True, type="primary"):
+                load_products(selected_category)
+        return
+
+    # 카테고리 변경 시 자동 로드 (이미 제품이 있는 경우)
+    if "last_category" not in st.session_state:
+        st.session_state.last_category = selected_category
+
+    if st.session_state.last_category != selected_category:
+        st.session_state.last_category = selected_category
+        load_products(selected_category)
 
     # 필터링 및 정렬
     filtered_products = products
@@ -381,6 +343,14 @@ def render_product_detail():
     if not product:
         st.warning("선택된 제품이 없습니다.")
         return
+
+    # 상단 네비게이션
+    col_back, col_title = st.columns([1, 5])
+    with col_back:
+        if st.button("← 목록으로", use_container_width=True):
+            st.session_state.current_page = "product_list"
+            st.session_state.selected_product = None
+            st.rerun()
 
     # 헤더
     st.title(f"📦 {product.name}")
@@ -1071,11 +1041,20 @@ def render_compare_products():
 
     products = st.session_state.compare_products
 
-    if len(products) < 2:
-        st.warning("비교하려면 최소 2개 제품을 선택하세요.")
-        if st.button("🏠 제품 목록으로 돌아가기"):
+    # 상단 네비게이션
+    col_back, col_clear, col_spacer = st.columns([1, 1, 4])
+    with col_back:
+        if st.button("← 목록으로", use_container_width=True):
             st.session_state.current_page = "product_list"
             st.rerun()
+    with col_clear:
+        if st.button("🗑️ 비교 초기화", use_container_width=True):
+            st.session_state.compare_products = []
+            st.session_state.current_page = "product_list"
+            st.rerun()
+
+    if len(products) < 2:
+        st.warning("비교하려면 최소 2개 제품을 선택하세요.")
         return
 
     st.title("📊 제품 비교")
@@ -1248,23 +1227,18 @@ def render_compare_products():
 
 def main():
     """메인 함수."""
-    # 사이드바 렌더링
-    api_available = render_sidebar()
-
-    if not api_available:
-        st.error("OpenAI API 키가 필요합니다.")
+    # API 키 확인
+    if not check_api_key():
+        st.error("❌ OpenAI API 키가 필요합니다. `.env` 파일에 `OPENAI_API_KEY`를 설정하세요.")
         st.stop()
 
-    # 페이지 라우팅 - 컨테이너로 격리하여 렌더링 충돌 방지
-    page_container = st.container()
-
-    with page_container:
-        if st.session_state.current_page == "product_list":
-            render_product_list()
-        elif st.session_state.current_page == "product_detail":
-            render_product_detail()
-        elif st.session_state.current_page == "compare":
-            render_compare_products()
+    # 페이지 라우팅
+    if st.session_state.current_page == "product_list":
+        render_product_list()
+    elif st.session_state.current_page == "product_detail":
+        render_product_detail()
+    elif st.session_state.current_page == "compare":
+        render_compare_products()
 
 
 if __name__ == "__main__":
