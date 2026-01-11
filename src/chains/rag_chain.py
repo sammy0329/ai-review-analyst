@@ -201,8 +201,10 @@ class ReviewRAGChain:
 
         sources = []
         for doc in response.source_documents:
+            # original_text가 있으면 사용, 없으면 청크 텍스트 사용
+            text = doc.metadata.get("original_text") or doc.page_content
             sources.append({
-                "text": doc.page_content,
+                "text": text,
                 "rating": doc.metadata.get("rating"),
                 "date": doc.metadata.get("date"),
                 "review_hash": doc.metadata.get("review_hash"),

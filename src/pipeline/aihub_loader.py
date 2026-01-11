@@ -32,6 +32,16 @@ class AIHubReview:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AIHubReview":
         """딕셔너리에서 AIHubReview 객체 생성."""
+        # ReviewScore 파싱 (문자열 또는 빈 문자열 처리)
+        review_score_raw = data.get("ReviewScore", "")
+        if review_score_raw and str(review_score_raw).strip():
+            try:
+                review_score = int(review_score_raw)
+            except ValueError:
+                review_score = -1  # 파싱 실패 시 -1 (알 수 없음)
+        else:
+            review_score = -1  # 빈 값이면 -1 (알 수 없음)
+
         return cls(
             index=str(data.get("Index", "")),
             raw_text=data.get("RawText", ""),
@@ -39,7 +49,7 @@ class AIHubReview:
             domain=data.get("Domain", ""),
             main_category=data.get("MainCategory", ""),
             product_name=data.get("ProductName", ""),
-            review_score=int(data.get("ReviewScore", 0)),
+            review_score=review_score,
             general_polarity=int(data.get("GeneralPolarity", 0)),
             aspects=data.get("Aspects", []),
             date=data.get("RDate"),
@@ -48,7 +58,14 @@ class AIHubReview:
     def to_review(self) -> Review:
         """프로젝트 Review 형식으로 변환."""
         # 100점 만점을 5점 만점으로 변환
-        rating = self.review_score / 20 if self.review_score else None
+        # -1은 알 수 없음을 의미, 0~100은 유효한 점수
+        if self.review_score >= 0:
+            rating = self.review_score / 20  # 0~100 → 0.0~5.0
+        else:
+            # review_score가 없으면(-1) general_polarity 기반으로 평점 추정
+            # -1 (부정) -> 2.0, 0 (중립) -> 3.0, 1 (긍정) -> 4.0
+            polarity_rating_map = {-1: 2.0, 0: 3.0, 1: 4.0}
+            rating = polarity_rating_map.get(self.general_polarity, 3.0)
 
         # 날짜 포맷 변환 (YYYYMMDD -> YYYY-MM-DD)
         formatted_date = None

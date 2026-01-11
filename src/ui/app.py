@@ -91,7 +91,7 @@ def render_sidebar():
         st.subheader("📊 데이터 로드")
 
         # 카테고리 선택
-        categories = ["패션의류", "화장품미용", "디지털가전", "생활용품", "식품"]
+        categories = ["패션", "화장품", "가전", "IT기기", "생활용품"]
         selected_category = st.selectbox(
             "카테고리 선택",
             categories,
@@ -165,34 +165,16 @@ def load_reviews(category: str, sample_size: int):
             # AI Hub 데이터 로더
             loader = AIHubDataLoader(data_dir="data/aihub_data")
 
-            # 카테고리 매핑
-            category_map = {
-                "패션의류": "패션의류",
-                "화장품미용": "화장품미용",
-                "디지털가전": "디지털가전",
-                "생활용품": "생활용품",
-                "식품": "식품",
-            }
-
-            # 리뷰 로드
-            aihub_reviews = loader.load_reviews(
-                categories=[category_map[category]],
+            # 리뷰 로드 (as_project_format=True로 Review 객체 반환)
+            reviews = loader.load_reviews(
+                category=category,
                 limit=sample_size,
+                as_project_format=True,
             )
 
-            if not aihub_reviews:
+            if not reviews:
                 st.error("리뷰를 찾을 수 없습니다. 샘플 데이터를 사용합니다.")
-                # 샘플 데이터 사용
-                aihub_reviews = _get_sample_reviews()
-
-            # Review 객체로 변환
-            reviews = []
-            for ar in aihub_reviews:
-                reviews.append(Review(
-                    text=ar.text,
-                    rating=ar.rating,
-                    date=ar.date or "",
-                ))
+                reviews = _get_sample_reviews()
 
             # 전처리
             with st.spinner("🔧 전처리 중..."):
@@ -240,57 +222,47 @@ def load_reviews(category: str, sample_size: int):
 
 
 def _get_sample_reviews():
-    """샘플 리뷰 데이터."""
-    from src.pipeline.aihub_loader import AIHubReview
-
+    """샘플 리뷰 데이터 (Review 객체 리스트)."""
     return [
-        AIHubReview(
+        Review(
             text="이 제품 정말 좋아요! 배송도 빠르고 품질도 훌륭합니다. 가격 대비 만족스럽습니다.",
             rating=5.0,
             date="2024-01-15",
-            category="샘플",
         ),
-        AIHubReview(
+        Review(
             text="배송은 빨랐는데 제품 품질이 기대에 못 미치네요. 가격이 좀 아깝습니다.",
             rating=2.0,
             date="2024-01-14",
-            category="샘플",
         ),
-        AIHubReview(
+        Review(
             text="무난한 제품입니다. 특별히 좋지도 나쁘지도 않아요. 그냥 평범합니다.",
             rating=3.0,
             date="2024-01-13",
-            category="샘플",
         ),
-        AIHubReview(
+        Review(
             text="배송이 정말 빨라서 놀랐어요! 주문 다음날 도착했습니다. 제품도 괜찮네요.",
             rating=4.0,
             date="2024-01-12",
-            category="샘플",
         ),
-        AIHubReview(
+        Review(
             text="사이즈가 생각보다 작아요. 교환하려니 배송비가 아까워서 그냥 씁니다.",
             rating=2.5,
             date="2024-01-11",
-            category="샘플",
         ),
-        AIHubReview(
+        Review(
             text="디자인이 예쁘고 색상도 마음에 들어요. 친구들한테 추천했습니다!",
             rating=5.0,
             date="2024-01-10",
-            category="샘플",
         ),
-        AIHubReview(
+        Review(
             text="가성비 최고입니다. 이 가격에 이 정도면 정말 만족스러워요.",
             rating=4.5,
             date="2024-01-09",
-            category="샘플",
         ),
-        AIHubReview(
+        Review(
             text="포장이 꼼꼼하게 되어 왔어요. 제품 상태도 완벽합니다.",
             rating=5.0,
             date="2024-01-08",
-            category="샘플",
         ),
     ]
 
@@ -299,15 +271,9 @@ def _load_sample_data():
     """샘플 데이터로 초기화."""
     reviews = _get_sample_reviews()
 
-    # Review 객체로 변환
-    review_objs = [
-        Review(text=r.text, rating=r.rating, date=r.date or "")
-        for r in reviews
-    ]
-
     # 전처리
     preprocessor = create_default_preprocessor(chunk_size=300)
-    processed = preprocessor.process_batch(review_objs)
+    processed = preprocessor.process_batch(reviews)
     st.session_state.processed_reviews = processed
 
     # 벡터 DB

@@ -133,7 +133,7 @@ class ReviewEmbedder:
                 metadata = {
                     "review_hash": review.text_hash,
                     "chunk_index": chunk.chunk_index,
-                    "original_text": review.original_text[:500],  # 원본 텍스트 일부 저장
+                    "original_text": review.original_text,  # 원본 텍스트 전체 저장
                 }
 
                 # 평점 추가
