@@ -40,10 +40,12 @@
 
 | Feature | Description | Tech Key |
 |:--------|:------------|:---------|
+| **쇼핑몰 스타일 UI** | 제품 목록 → 제품 상세 → 리뷰 분석 흐름의 직관적 인터페이스 | `Streamlit`, `UX Design` |
 | **팩트 기반 요약** | 긍/부정 비율 시각화 및 키워드별 장단점(맛, 배송, 가성비) 분석 | `Prompt Engineering` |
 | **시맨틱 Q&A** | "이거 3살 아기가 먹어도 돼?" 같은 자연어 질문에 리뷰 근거로 답변 | `RAG`, `Vector DB` |
 | **비교 분석** | A상품(가성비) vs B상품(고품질) 중 내게 맞는 상품 추천 | `Multi-Agent`, `Reasoning` |
 | **속성 추출** | Raw 리뷰에서 가격/디자인/품질/배송 등 속성별 감정 자동 분석 | `LLM Prompting`, `Structured Output` |
+| **제품별 RAG Q&A** | 선택한 제품의 리뷰만을 기반으로 질문에 답변 | `Scoped RAG`, `Context Filtering` |
 | **할루시네이션 방지** | 답변 생성 시 참고한 실제 리뷰 원문(출처) 표기 | `Source Citation` |
 
 ---
@@ -134,8 +136,13 @@ ai-review-analyst/
 │   │   └── always.py          # 올웨이즈 크롤러
 │   ├── pipeline/              # Data processing
 │   │   ├── __init__.py
+│   │   ├── aihub_loader.py    # AI Hub 데이터 로더
+│   │   ├── aspect_extractor.py # LLM 속성 추출기
 │   │   ├── preprocessor.py
 │   │   └── embedder.py
+│   ├── prompts/               # 프롬프트 템플릿
+│   │   ├── __init__.py
+│   │   └── templates.py       # Q&A, 요약, 비교, 감성분석 프롬프트
 │   ├── agents/                # LangGraph agents
 │   │   ├── __init__.py
 │   │   ├── summarize_agent.py
@@ -144,6 +151,9 @@ ai-review-analyst/
 │   ├── chains/                # LangChain chains
 │   │   ├── __init__.py
 │   │   └── rag_chain.py
+│   ├── ui/                    # Streamlit UI 모듈
+│   │   ├── __init__.py
+│   │   └── app.py             # 쇼핑몰 스타일 대시보드
 │   └── utils/
 │       └── __init__.py
 ├── tests/
@@ -191,7 +201,10 @@ cp .env.example .env
 ### Running the Application
 
 ```bash
-# Run Streamlit app
+# Run Streamlit app (쇼핑몰 스타일 UI)
+streamlit run src/ui/app.py
+
+# 또는 루트의 엔트리포인트 사용
 streamlit run app.py
 ```
 
@@ -199,7 +212,24 @@ streamlit run app.py
 
 ## Key Features Demo
 
-### 1. Fact-based Summarization
+### 1. Product Explorer (쇼핑몰 스타일 UI)
+```
+[제품 목록 화면]
+┌─────────────┐ ┌─────────────┐ ┌─────────────┐
+│ 제품 A      │ │ 제품 B      │ │ 제품 C      │
+│ ⭐ 4.2/5.0  │ │ ⭐ 3.8/5.0  │ │ ⭐ 4.5/5.0  │
+│ 리뷰 128개  │ │ 리뷰 89개   │ │ 리뷰 256개  │
+│ 긍정 75%    │ │ 긍정 62%    │ │ 긍정 88%    │
+└─────────────┘ └─────────────┘ └─────────────┘
+
+[제품 상세 화면]
+- 요약 탭: 평점, 감정 분포, 키워드
+- 속성 분석 탭: 가격/품질/배송 등 속성별 감정
+- Q&A 탭: 해당 제품 리뷰 기반 RAG 질의응답
+- 리뷰 목록 탭: 전체 리뷰 브라우징
+```
+
+### 2. Fact-based Summarization
 ```
 Input: 상품 URL 입력
 Output:
@@ -208,15 +238,18 @@ Output:
 - 3줄 요약: "대부분의 리뷰어가 배송 속도와 맛에 만족..."
 ```
 
-### 2. Semantic Q&A
+### 3. Semantic Q&A (제품별 RAG)
 ```
+[특정 제품 상세 페이지에서]
 User: "이거 3살 아기가 먹어도 괜찮아?"
 Agent: "12개의 리뷰에서 '아이', '유아' 관련 언급을 찾았습니다.
        8개 리뷰가 긍정적이며, 주요 내용은..."
        [참고 리뷰 원문 보기]
+
+→ 해당 제품의 리뷰만 검색하여 정확한 답변 제공
 ```
 
-### 3. Product Comparison
+### 4. Product Comparison
 ```
 Input: 상품A URL, 상품B URL
 Output:
@@ -225,7 +258,7 @@ Output:
 - 추천: "빠른 배송을 원하시면 B상품을 추천드립니다."
 ```
 
-### 4. Aspect Extraction (속성 추출)
+### 5. Aspect Extraction (속성 추출)
 ```
 Input: "가격은 좀 비싸지만 소재가 정말 좋아요. 배송도 빨랐습니다."
 Output:
@@ -247,15 +280,20 @@ Output:
 - [x] AI Hub 공개 데이터셋 통합 (225K+ 이커머스 리뷰)
 - [x] Data preprocessing pipeline
 
-### Phase 2: Core RAG (75% 완료)
+### Phase 2: Core RAG (100% 완료)
 - [x] ChromaDB integration & embedding pipeline
 - [x] LangChain RAG chain
 - [x] Prompt engineering (Q&A, 요약, 비교, 감성분석)
-- [ ] **LLM 기반 속성 추출 시스템** (진행 예정)
+- [x] LLM 기반 속성 추출 시스템 (27개 테스트 통과)
 
-### Phase 3-5: Agent & Deployment
+### Phase 3: Dashboard & UI (진행 중)
+- [x] 기본 Streamlit 대시보드
+- [x] 쇼핑몰 스타일 UI 개편 (제품 목록 → 상세 → Q&A)
+- [x] 제품별 RAG Q&A 기능
+- [ ] 속성 분석 시각화 개선
+
+### Phase 4-5: Agent & Deployment
 - [ ] LangGraph multi-agent system
-- [ ] Streamlit dashboard enhancement
 - [ ] Docker & AWS EC2 deployment
 
 ---
