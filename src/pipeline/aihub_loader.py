@@ -439,10 +439,16 @@ class AIHubDataLoader:
             if len(reviews) < min_reviews:
                 continue
 
-            # 평균 평점 계산
-            valid_scores = [r.review_score for r in reviews if r.review_score >= 0]
+            # 평균 평점 계산 (review_score > 0만 유효, 0은 미입력으로 간주)
+            valid_scores = [r.review_score for r in reviews if r.review_score > 0]
             if valid_scores:
-                avg_rating = sum(valid_scores) / len(valid_scores) / 20  # 100점 -> 5점
+                max_score = max(valid_scores)
+                avg_score = sum(valid_scores) / len(valid_scores)
+                # 점수 범위 자동 감지: max > 5면 100점 만점, 아니면 5점 만점
+                if max_score > 5:
+                    avg_rating = avg_score / 20  # 100점 -> 5점
+                else:
+                    avg_rating = avg_score  # 이미 5점 만점
             else:
                 # review_score 없으면 polarity 기반 추정
                 polarity_scores = []

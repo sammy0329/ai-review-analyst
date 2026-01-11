@@ -24,6 +24,7 @@ from src.pipeline.aspect_extractor import create_aspect_extractor
 from src.pipeline.preprocessor import create_default_preprocessor
 from src.pipeline.embedder import create_embedder
 from src.chains.rag_chain import create_rag_chain
+from src.pipeline.user_review_store import UserReview, create_user_review_store
 
 
 # =============================================================================
@@ -67,6 +68,14 @@ def init_session_state():
     # 속성 분석 결과 (제품별)
     if "product_aspects" not in st.session_state:
         st.session_state.product_aspects = {}
+
+    # 사용자 리뷰 저장소
+    if "user_review_store" not in st.session_state:
+        st.session_state.user_review_store = create_user_review_store()
+
+    # 새로 추가된 리뷰 ID (자동 확장용)
+    if "newly_added_review_id" not in st.session_state:
+        st.session_state.newly_added_review_id = None
 
 
 init_session_state()
@@ -343,22 +352,37 @@ def render_product_detail():
 
     st.markdown("---")
 
-    # 탭
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 요약", "🏷️ 속성 분석", "💬 Q&A", "📋 리뷰 목록"
-    ])
+    # 사용자 리뷰 수 표시
+    user_review_count = st.session_state.user_review_store.get_review_count(product.name)
+    if user_review_count > 0:
+        st.info(f"✍️ 사용자 추가 리뷰: {user_review_count}개")
 
-    with tab1:
+    # 탭 (radio 버튼으로 상태 유지)
+    tab_options = ["📊 요약", "🏷️ 속성 분석", "💬 Q&A", "📋 리뷰 목록", "✍️ 리뷰 추가"]
+    # 제품명에서 안전한 키 생성 (특수문자 제거)
+    safe_product_key = "".join(c if c.isalnum() else "_" for c in product.name[:30])
+    tab_key = f"product_tab_{safe_product_key}"
+
+    selected_tab = st.radio(
+        "탭 선택",
+        options=tab_options,
+        horizontal=True,
+        key=tab_key,
+        label_visibility="collapsed",
+    )
+
+    st.markdown("---")
+
+    if selected_tab == "📊 요약":
         render_product_summary(product)
-
-    with tab2:
+    elif selected_tab == "🏷️ 속성 분석":
         render_product_aspects(product)
-
-    with tab3:
+    elif selected_tab == "💬 Q&A":
         render_product_qa(product)
-
-    with tab4:
+    elif selected_tab == "📋 리뷰 목록":
         render_product_reviews(product)
+    elif selected_tab == "✍️ 리뷰 추가":
+        render_add_review(product)
 
 
 def render_product_summary(product: Product):
@@ -716,10 +740,14 @@ def render_product_reviews(product: Product):
     """리뷰 목록 탭."""
     st.subheader("📋 리뷰 목록")
 
+    # 사용자 리뷰 가져오기
+    user_reviews = st.session_state.user_review_store.get_reviews(product.name)
+    user_review_count = len(user_reviews)
+
     reviews = product.reviews
 
     # 필터
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         sentiment_filter = st.selectbox(
             "감정 필터",
@@ -732,48 +760,253 @@ def render_product_reviews(product: Product):
             ["최신순", "긍정순", "부정순"],
             key=f"sort_option_{product.name}",
         )
+    with col3:
+        source_filter = st.selectbox(
+            "소스",
+            ["전체", "AI Hub", "사용자 추가"],
+            key=f"source_filter_{product.name}",
+        )
 
     # 필터링
     polarity_map = {1: "긍정", 0: "중립", -1: "부정"}
-    filtered_reviews = reviews
+    sentiment_en_kr = {"positive": "긍정", "negative": "부정", "neutral": "중립"}
 
-    if sentiment_filter != "전체":
-        filtered_reviews = [
-            r for r in reviews
+    # AI Hub 리뷰 필터링
+    filtered_aihub = reviews if source_filter in ["전체", "AI Hub"] else []
+    if sentiment_filter != "전체" and filtered_aihub:
+        filtered_aihub = [
+            r for r in filtered_aihub
             if polarity_map.get(r.general_polarity, "중립") == sentiment_filter
         ]
 
-    # 정렬
-    if sort_option == "긍정순":
-        filtered_reviews.sort(key=lambda r: r.general_polarity, reverse=True)
-    elif sort_option == "부정순":
-        filtered_reviews.sort(key=lambda r: r.general_polarity)
+    # 사용자 리뷰 필터링
+    filtered_user = user_reviews if source_filter in ["전체", "사용자 추가"] else []
+    if sentiment_filter != "전체" and filtered_user:
+        filtered_user = [
+            r for r in filtered_user
+            if sentiment_en_kr.get(r.overall_sentiment, "중립") == sentiment_filter
+        ]
 
-    st.markdown(f"**{len(filtered_reviews)}개** 리뷰")
+    # 정렬 (AI Hub만)
+    if sort_option == "긍정순":
+        filtered_aihub.sort(key=lambda r: r.general_polarity, reverse=True)
+    elif sort_option == "부정순":
+        filtered_aihub.sort(key=lambda r: r.general_polarity)
+
+    total_count = len(filtered_aihub) + len(filtered_user)
+    st.markdown(f"**{total_count}개** 리뷰 (AI Hub: {len(filtered_aihub)}, 사용자: {len(filtered_user)})")
     st.markdown("---")
 
-    # 리뷰 표시
-    for i, review in enumerate(filtered_reviews[:20]):  # 최대 20개
-        polarity_label = polarity_map.get(review.general_polarity, "중립")
-        emoji = {"긍정": "😊", "중립": "😐", "부정": "😞"}.get(polarity_label, "❓")
+    # 사용자 리뷰 먼저 표시 (최신순)
+    if filtered_user:
+        st.markdown("#### ✍️ 사용자 추가 리뷰")
+        for i, review in enumerate(reversed(filtered_user)):
+            sentiment_kr = sentiment_en_kr.get(review.overall_sentiment, "중립")
+            emoji = {"긍정": "😊", "중립": "😐", "부정": "😞"}.get(sentiment_kr, "❓")
 
-        with st.expander(f"{emoji} 리뷰 {i+1}: {review.raw_text[:50]}...", expanded=False):
-            st.markdown(review.raw_text)
+            # 별점 표시
+            rating = getattr(review, 'rating', 0)
+            stars_display = "⭐" * rating if rating > 0 else ""
 
+            with st.expander(f"{stars_display} {emoji} [사용자] {review.text[:40]}...", expanded=False):
+                if rating > 0:
+                    full_stars = "⭐" * rating + "☆" * (5 - rating)
+                    st.markdown(f"**별점:** {full_stars} ({rating}점)")
+                st.markdown(review.text)
+                st.caption(f"📅 {review.created_at[:10]} | 🤖 AI 분석 완료 (신뢰도: {review.confidence:.0%})")
+
+                if review.aspects:
+                    st.markdown("---")
+                    st.markdown("**AI 추출 속성:**")
+                    for aspect in review.aspects:
+                        a_sentiment = aspect.get("sentiment", "neutral")
+                        a_emoji = {"positive": "👍", "negative": "👎", "neutral": "➖"}.get(a_sentiment, "❓")
+                        st.markdown(f"- {a_emoji} **{aspect.get('category', '')}**: {aspect.get('text', '')[:80]}...")
+
+        if filtered_aihub:
             st.markdown("---")
 
-            # 속성 정보
-            if review.aspects:
-                st.markdown("**언급된 속성:**")
-                for aspect in review.aspects:
-                    aspect_name = aspect.get("Aspect", "")
-                    aspect_polarity = aspect.get("SentimentPolarity", 0)
-                    aspect_text = aspect.get("SentimentText", "")
+    # AI Hub 리뷰 표시
+    if filtered_aihub:
+        st.markdown("#### 📦 AI Hub 리뷰")
+        for i, review in enumerate(filtered_aihub[:20]):  # 최대 20개
+            polarity_label = polarity_map.get(review.general_polarity, "중립")
+            emoji = {"긍정": "😊", "중립": "😐", "부정": "😞"}.get(polarity_label, "❓")
 
-                    a_label = polarity_map.get(int(aspect_polarity) if isinstance(aspect_polarity, str) else aspect_polarity, "중립")
-                    a_emoji = {"긍정": "👍", "중립": "➖", "부정": "👎"}.get(a_label, "❓")
+            with st.expander(f"{emoji} 리뷰 {i+1}: {review.raw_text[:50]}...", expanded=False):
+                st.markdown(review.raw_text)
 
-                    st.markdown(f"- {a_emoji} **{aspect_name}**: {aspect_text[:100]}...")
+                st.markdown("---")
+
+                # 속성 정보
+                if review.aspects:
+                    st.markdown("**언급된 속성:**")
+                    for aspect in review.aspects:
+                        aspect_name = aspect.get("Aspect", "")
+                        aspect_polarity = aspect.get("SentimentPolarity", 0)
+                        aspect_text = aspect.get("SentimentText", "")
+
+                        a_label = polarity_map.get(int(aspect_polarity) if isinstance(aspect_polarity, str) else aspect_polarity, "중립")
+                        a_emoji = {"긍정": "👍", "중립": "➖", "부정": "👎"}.get(a_label, "❓")
+
+                        st.markdown(f"- {a_emoji} **{aspect_name}**: {aspect_text[:100]}...")
+
+
+def render_add_review(product: Product):
+    """리뷰 추가 탭 - LLM 기반 속성 추출."""
+    st.subheader("✍️ 리뷰 추가")
+    st.markdown("직접 리뷰를 작성하면 **AI가 속성을 자동 분석**합니다.")
+
+    # 별점 선택 UI
+    st.markdown("**별점을 선택하세요**")
+    rating_options = {
+        "⭐": 1,
+        "⭐⭐": 2,
+        "⭐⭐⭐": 3,
+        "⭐⭐⭐⭐": 4,
+        "⭐⭐⭐⭐⭐": 5,
+    }
+    rating_key = f"star_rating_{product.name}"
+
+    selected_stars = st.radio(
+        "별점",
+        options=list(rating_options.keys()),
+        index=4,  # 기본 5점
+        horizontal=True,
+        key=rating_key,
+        label_visibility="collapsed",
+    )
+    current_rating = rating_options[selected_stars]
+
+    rating_text = {1: "매우 불만족", 2: "불만족", 3: "보통", 4: "만족", 5: "매우 만족"}
+    st.caption(f"{current_rating}점 - {rating_text[current_rating]}")
+
+    # 텍스트 영역 키 (제품명 안전 처리)
+    safe_name = "".join(c if c.isalnum() else "_" for c in product.name[:30])
+    text_key = f"review_text_{safe_name}"
+    clear_flag_key = f"clear_review_text_{safe_name}"
+
+    # 텍스트 초기화 플래그 처리
+    if st.session_state.get(clear_flag_key, False):
+        st.session_state[text_key] = ""
+        st.session_state[clear_flag_key] = False
+
+    # 리뷰 입력 (form 없이)
+    review_text = st.text_area(
+        "리뷰 내용",
+        placeholder="이 제품에 대한 리뷰를 작성해주세요...\n예: 가격은 좀 비싸지만 품질이 정말 좋아요. 배송도 빨랐습니다.",
+        height=150,
+        key=text_key,
+    )
+
+    if st.button("🔍 AI 분석 후 저장", key=f"submit_review_{product.name}", use_container_width=True):
+        if review_text.strip():
+            with st.spinner("🤖 AI가 리뷰를 분석하고 있습니다..."):
+                try:
+                    # AspectExtractor로 분석
+                    extractor = create_aspect_extractor(use_cache=True)
+                    result = extractor.extract(review_text.strip())
+
+                    # UserReview 생성 (별점 포함)
+                    user_review = UserReview.create(
+                        product_name=product.name,
+                        text=review_text.strip(),
+                        rating=current_rating,
+                    )
+
+                    # 분석 결과 업데이트
+                    user_review.overall_sentiment = result.overall_sentiment.value
+                    user_review.confidence = result.confidence
+                    user_review.aspects = result.aspects
+                    user_review.analyzed = True
+
+                    # 저장
+                    st.session_state.user_review_store.add_review(user_review)
+
+                    # 새로 추가된 리뷰 ID 저장
+                    st.session_state.newly_added_review_id = user_review.id
+
+                    # 텍스트 초기화 플래그 설정
+                    st.session_state[clear_flag_key] = True
+
+                    # rerun으로 텍스트 초기화 (탭은 radio로 유지됨)
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"분석 중 오류가 발생했습니다: {e}")
+        else:
+            st.warning("리뷰 내용을 입력해주세요.")
+
+    # 기존 사용자 리뷰 표시
+    st.markdown("---")
+    st.markdown("### 📝 내가 추가한 리뷰")
+
+    user_reviews = st.session_state.user_review_store.get_reviews(product.name)
+
+    if not user_reviews:
+        st.info("아직 추가한 리뷰가 없습니다.")
+    else:
+        # 새로 추가된 리뷰 ID 확인
+        newly_added_id = st.session_state.newly_added_review_id
+
+        for review in reversed(user_reviews):  # 최신순
+            sentiment_emoji = {
+                "positive": "😊",
+                "negative": "😞",
+                "neutral": "😐",
+            }
+
+            # 새로 추가된 리뷰는 자동 확장
+            is_newly_added = review.id == newly_added_id
+
+            # 별점 표시
+            rating = getattr(review, 'rating', 0)
+            stars_display = "⭐" * rating if rating > 0 else ""
+
+            with st.expander(
+                f"{stars_display} {sentiment_emoji.get(review.overall_sentiment, '❓')} {review.text[:40]}...",
+                expanded=is_newly_added
+            ):
+                # 새로 추가된 리뷰 - ID 초기화 (다음 렌더링을 위해)
+                if is_newly_added:
+                    st.session_state.newly_added_review_id = None
+
+                # 별점 표시
+                if rating > 0:
+                    full_stars = "⭐" * rating + "☆" * (5 - rating)
+                    st.markdown(f"**별점:** {full_stars} ({rating}점)")
+
+                st.markdown(f"**리뷰:** {review.text}")
+                st.markdown(f"**작성일:** {review.created_at[:10]}")
+
+                sentiment_kr = {"positive": "긍정", "negative": "부정", "neutral": "중립"}
+                st.markdown(f"**AI 감정 분석:** {sentiment_kr.get(review.overall_sentiment, '중립')} (신뢰도: {review.confidence:.0%})")
+
+                if review.aspects:
+                    st.markdown("**🤖 AI 속성 분석:**")
+                    sentiment_color = {
+                        "positive": "#e3f2fd",
+                        "negative": "#ffebee",
+                        "neutral": "#e8f5e9",
+                    }
+                    for aspect in review.aspects:
+                        a_sentiment = aspect.get("sentiment", "neutral")
+                        a_emoji = {"positive": "👍", "negative": "👎", "neutral": "➖"}.get(a_sentiment, "❓")
+                        a_sentiment_kr = {"positive": "긍정", "negative": "부정", "neutral": "중립"}.get(a_sentiment, "중립")
+
+                        st.markdown(
+                            f'<div style="background-color: {sentiment_color.get(a_sentiment, "#f5f5f5")}; '
+                            f'padding: 8px 12px; border-radius: 5px; margin-bottom: 6px;">'
+                            f'{a_emoji} <b>{aspect.get("category", "")}</b>: {a_sentiment_kr}<br>'
+                            f'<span style="color: #666; font-size: 0.9em;">"{aspect.get("text", "")}"</span>'
+                            f'</div>',
+                            unsafe_allow_html=True
+                        )
+
+                # 삭제 버튼
+                if st.button("🗑️ 삭제", key=f"delete_{review.id}"):
+                    st.session_state.user_review_store.delete_review(product.name, review.id)
+                    st.rerun()
 
 
 # =============================================================================
