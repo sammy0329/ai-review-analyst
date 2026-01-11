@@ -132,15 +132,32 @@ def render_product_list():
 
     products = st.session_state.products
 
-    # 상단 필터 (모두 동일한 레이블 구조)
-    col_cat, col_search, col_sort, col_compare = st.columns([1.2, 2.5, 1.2, 1.1])
+    # 상단 필터 (대분류 + 소분류 + 검색 + 정렬 + 비교)
+    col_cat, col_subcat, col_search, col_sort, col_compare = st.columns([1, 1.2, 2, 1, 1])
 
     with col_cat:
         categories = ["전체", "패션", "화장품", "가전", "IT기기", "생활용품"]
         selected_category = st.selectbox(
-            "카테고리",
+            "대분류",
             categories,
             key="category_filter",
+        )
+
+    with col_subcat:
+        # 소분류 목록 (제품에서 추출)
+        if products and selected_category != "전체":
+            subcategories = sorted(set(
+                p.main_category for p in products
+                if p.category == selected_category and p.main_category
+            ))
+            subcategories = ["전체"] + subcategories
+        else:
+            subcategories = ["전체"]
+
+        selected_subcategory = st.selectbox(
+            "소분류",
+            subcategories,
+            key="subcategory_filter",
         )
 
     with col_search:
@@ -171,7 +188,7 @@ def render_product_list():
     if "last_category" not in st.session_state:
         st.session_state.last_category = selected_category
 
-    # 제품이 없거나 카테고리 변경 시 자동 로드
+    # 제품이 없거나 대분류 변경 시 자동 로드
     if not products:
         load_products(selected_category)
         return
@@ -183,12 +200,22 @@ def render_product_list():
 
     # 필터링 및 정렬
     filtered_products = products
+
+    # 소분류 필터
+    if selected_subcategory != "전체":
+        filtered_products = [
+            p for p in filtered_products
+            if p.main_category == selected_subcategory
+        ]
+
+    # 검색 필터
     if search_query:
         filtered_products = [
-            p for p in products
+            p for p in filtered_products
             if search_query.lower() in p.name.lower()
         ]
 
+    # 정렬
     if sort_option == "리뷰 많은순":
         filtered_products.sort(key=lambda p: p.review_count, reverse=True)
     elif sort_option == "평점 높은순":
