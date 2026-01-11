@@ -1,6 +1,13 @@
 # Pipeline module
 
 from .aihub_loader import AIHubDataLoader, AIHubReview
+from .embedder import (
+    CollectionManager,
+    EmbedderConfig,
+    ReviewEmbedder,
+    SearchResult,
+    create_embedder,
+)
 from .preprocessor import (
     DuplicateFilter,
     ProcessedReview,
@@ -23,4 +30,10 @@ __all__ = [
     "ProcessedReview",
     "ReviewPreprocessor",
     "create_default_preprocessor",
+    # Embedder
+    "EmbedderConfig",
+    "SearchResult",
+    "ReviewEmbedder",
+    "CollectionManager",
+    "create_embedder",
 ]
