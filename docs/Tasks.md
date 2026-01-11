@@ -241,6 +241,13 @@
 - 예시 질문 버튼
 - 실행: `streamlit run src/ui/app.py`
 
+**버그 수정 (Issue #19):**
+- ReviewScore 문자열/None/빈값 파싱 처리
+- SNS 데이터 GeneralPolarity 기반 평점 추정
+- original_text 전체 저장 (500자 제한 제거)
+- RAG 소스에서 original_text 우선 사용
+- API 호출 파라미터 수정 (카테고리명, category= 파라미터)
+
 ---
 
 ### Epic 4.2: UX 개선
