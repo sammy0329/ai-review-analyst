@@ -15,32 +15,12 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_openai import ChatOpenAI
 
 from src.pipeline.embedder import ReviewEmbedder, create_embedder
+from src.prompts.templates import QA_PROMPT, SUMMARY_PROMPT, get_prompt, PromptTemplate
 
 
-# 시스템 프롬프트
-SYSTEM_PROMPT = """당신은 상품 리뷰 분석 전문가입니다.
-사용자의 질문에 대해 제공된 리뷰 데이터를 기반으로 정확하고 객관적으로 답변합니다.
-
-## 답변 원칙
-1. **근거 기반**: 반드시 제공된 리뷰 내용을 근거로 답변하세요.
-2. **객관성 유지**: 리뷰에 없는 내용을 추측하거나 지어내지 마세요.
-3. **수치화**: 가능하면 구체적인 수치나 비율을 언급하세요. (예: "5개 리뷰 중 4개가 긍정적")
-4. **균형잡힌 시각**: 긍정적/부정적 의견이 모두 있다면 양쪽을 언급하세요.
-5. **불확실성 인정**: 정보가 부족하면 "제공된 리뷰에서는 해당 정보를 찾을 수 없습니다"라고 답하세요.
-
-## 답변 형식
-- 먼저 핵심 답변을 제시하세요.
-- 그 다음 근거가 되는 리뷰 내용을 인용하세요.
-- 마지막으로 추가 참고사항이 있으면 언급하세요."""
-
-# 사용자 프롬프트 템플릿
-USER_PROMPT_TEMPLATE = """## 참고 리뷰
-{context}
-
-## 질문
-{question}
-
-위 리뷰들을 참고하여 질문에 답변해주세요."""
+# 기본 프롬프트 (prompts 모듈에서 가져옴)
+SYSTEM_PROMPT = QA_PROMPT.system_prompt
+USER_PROMPT_TEMPLATE = QA_PROMPT.user_prompt_template
 
 
 @dataclass
@@ -261,6 +241,45 @@ class ReviewRAGChain:
                 search_type=self.config.search_type,
                 top_k=self.config.top_k,
             )
+
+        # Chain 재구성
+        self._chain = self._build_chain()
+
+    def set_prompt(self, prompt_name: str) -> None:
+        """
+        프롬프트 템플릿 변경.
+
+        Args:
+            prompt_name: 프롬프트 이름 ("qa", "summary", "compare", "sentiment")
+        """
+        prompt = get_prompt(prompt_name)
+        self.config.system_prompt = prompt.system_prompt
+        self.config.user_prompt_template = prompt.user_prompt_template
+
+        # 프롬프트 템플릿 재생성
+        self._prompt = ChatPromptTemplate.from_messages([
+            ("system", self.config.system_prompt),
+            ("human", self.config.user_prompt_template),
+        ])
+
+        # Chain 재구성
+        self._chain = self._build_chain()
+
+    def set_prompt_template(self, prompt_template: PromptTemplate) -> None:
+        """
+        커스텀 프롬프트 템플릿 설정.
+
+        Args:
+            prompt_template: PromptTemplate 인스턴스
+        """
+        self.config.system_prompt = prompt_template.system_prompt
+        self.config.user_prompt_template = prompt_template.user_prompt_template
+
+        # 프롬프트 템플릿 재생성
+        self._prompt = ChatPromptTemplate.from_messages([
+            ("system", self.config.system_prompt),
+            ("human", self.config.user_prompt_template),
+        ])
 
         # Chain 재구성
         self._chain = self._build_chain()
