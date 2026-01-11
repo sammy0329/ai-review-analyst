@@ -2,10 +2,11 @@
 
 # AIHub loader는 playwright 의존성이 있으므로 선택적으로 import
 try:
-    from .aihub_loader import AIHubDataLoader, AIHubReview
+    from .aihub_loader import AIHubDataLoader, AIHubReview, Product
 except ImportError:
     AIHubDataLoader = None  # type: ignore
     AIHubReview = None  # type: ignore
+    Product = None  # type: ignore
 
 from .aspect_extractor import (
     AspectCategory,
@@ -35,6 +36,7 @@ __all__ = [
     # AI Hub Data Loader
     "AIHubDataLoader",
     "AIHubReview",
+    "Product",
     # Aspect Extractor
     "AspectCategory",
     "AspectExtractor",

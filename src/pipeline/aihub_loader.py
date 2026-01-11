@@ -15,6 +15,27 @@ from src.crawler.base import Review
 
 
 @dataclass
+class Product:
+    """제품 정보."""
+
+    name: str
+    category: str
+    main_category: str
+    review_count: int
+    avg_rating: float
+    sentiment_distribution: dict[str, int]  # {"긍정": n, "중립": n, "부정": n}
+    top_aspects: list[str]  # 자주 언급되는 속성들
+    reviews: list["AIHubReview"] = field(default_factory=list)
+
+    def get_sentiment_ratio(self) -> dict[str, float]:
+        """감정 비율 반환."""
+        total = sum(self.sentiment_distribution.values())
+        if total == 0:
+            return {"긍정": 0.0, "중립": 0.0, "부정": 0.0}
+        return {k: v / total * 100 for k, v in self.sentiment_distribution.items()}
+
+
+@dataclass
 class AIHubReview:
     """AI Hub 원본 리뷰 데이터 구조."""
 
@@ -368,6 +389,128 @@ class AIHubDataLoader:
             json.dump(output_data, f, ensure_ascii=False, indent=2)
 
         return len(reviews)
+
+    def get_products(
+        self,
+        split: str = "all",
+        category: str | None = None,
+        source: str | None = None,
+        min_reviews: int = 3,
+        limit: int | None = None,
+    ) -> list[Product]:
+        """
+        제품 목록 조회 (리뷰를 제품별로 그룹화).
+
+        Args:
+            split: 데이터 분할 ("all", "training", "validation")
+            category: 카테고리 필터
+            source: 출처 필터
+            min_reviews: 최소 리뷰 수 (이 이상인 제품만 반환)
+            limit: 최대 반환 제품 수
+
+        Returns:
+            Product 객체 리스트 (리뷰 수 내림차순 정렬)
+        """
+        from collections import Counter, defaultdict
+
+        # 제품별 리뷰 그룹화
+        product_reviews: dict[str, list[AIHubReview]] = defaultdict(list)
+        product_info: dict[str, dict] = {}
+
+        for review in self.iter_reviews(split, category, source):
+            product_name = review.product_name.strip()
+            if not product_name:
+                continue
+
+            product_reviews[product_name].append(review)
+
+            # 제품 정보 저장 (첫 리뷰 기준)
+            if product_name not in product_info:
+                product_info[product_name] = {
+                    "category": review.domain,
+                    "main_category": review.main_category,
+                }
+
+        # Product 객체 생성
+        products = []
+        polarity_map = {1: "긍정", 0: "중립", -1: "부정"}
+
+        for name, reviews in product_reviews.items():
+            if len(reviews) < min_reviews:
+                continue
+
+            # 평균 평점 계산
+            valid_scores = [r.review_score for r in reviews if r.review_score >= 0]
+            if valid_scores:
+                avg_rating = sum(valid_scores) / len(valid_scores) / 20  # 100점 -> 5점
+            else:
+                # review_score 없으면 polarity 기반 추정
+                polarity_scores = []
+                for r in reviews:
+                    if r.general_polarity == 1:
+                        polarity_scores.append(4.0)
+                    elif r.general_polarity == -1:
+                        polarity_scores.append(2.0)
+                    else:
+                        polarity_scores.append(3.0)
+                avg_rating = sum(polarity_scores) / len(polarity_scores)
+
+            # 감정 분포
+            sentiment_dist = {"긍정": 0, "중립": 0, "부정": 0}
+            for r in reviews:
+                label = polarity_map.get(r.general_polarity, "중립")
+                sentiment_dist[label] += 1
+
+            # 자주 언급되는 속성 (상위 5개)
+            aspect_counter: Counter = Counter()
+            for r in reviews:
+                for aspect in r.aspects:
+                    aspect_name = aspect.get("Aspect", "")
+                    if aspect_name:
+                        aspect_counter[aspect_name] += 1
+            top_aspects = [a[0] for a in aspect_counter.most_common(5)]
+
+            info = product_info[name]
+            product = Product(
+                name=name,
+                category=info["category"],
+                main_category=info["main_category"],
+                review_count=len(reviews),
+                avg_rating=avg_rating,
+                sentiment_distribution=sentiment_dist,
+                top_aspects=top_aspects,
+                reviews=reviews,
+            )
+            products.append(product)
+
+        # 리뷰 수 기준 내림차순 정렬
+        products.sort(key=lambda p: p.review_count, reverse=True)
+
+        if limit:
+            products = products[:limit]
+
+        return products
+
+    def get_product_by_name(
+        self,
+        product_name: str,
+        split: str = "all",
+    ) -> Product | None:
+        """
+        제품명으로 제품 조회.
+
+        Args:
+            product_name: 제품명
+            split: 데이터 분할
+
+        Returns:
+            Product 객체 또는 None
+        """
+        products = self.get_products(split=split, min_reviews=1)
+        for product in products:
+            if product.name == product_name:
+                return product
+        return None
 
 
 def main():
