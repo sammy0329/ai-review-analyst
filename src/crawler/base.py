@@ -10,7 +10,15 @@ from datetime import datetime
 from typing import Any
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
-from playwright_stealth import stealth_async
+
+# playwright_stealth 호환성 처리
+try:
+    from playwright_stealth import stealth_async
+except ImportError:
+    from playwright_stealth import Stealth
+    async def stealth_async(page: Page) -> None:
+        """Fallback stealth wrapper."""
+        await Stealth().apply(page)
 
 # User-Agent rotation pool
 USER_AGENTS = [

@@ -23,6 +23,7 @@ from src.crawler.base import Review
 from src.pipeline.preprocessor import create_default_preprocessor
 from src.pipeline.embedder import create_embedder
 from src.pipeline.aihub_loader import AIHubDataLoader
+from src.pipeline.aspect_extractor import create_aspect_extractor, AspectResult
 from src.chains.rag_chain import create_rag_chain
 
 
@@ -61,6 +62,20 @@ def init_session_state():
 
     if "processed_reviews" not in st.session_state:
         st.session_state.processed_reviews = []
+
+    # 속성 분석 관련
+    if "aspect_results" not in st.session_state:
+        st.session_state.aspect_results = []
+
+    if "aspect_stats" not in st.session_state:
+        st.session_state.aspect_stats = None
+
+    if "raw_reviews" not in st.session_state:
+        st.session_state.raw_reviews = []
+
+    # 제품 비교용 데이터
+    if "comparison_data" not in st.session_state:
+        st.session_state.comparison_data = {}  # {category: {stats, results}}
 
 
 init_session_state()
@@ -176,6 +191,9 @@ def load_reviews(category: str, sample_size: int):
                 st.error("리뷰를 찾을 수 없습니다. 샘플 데이터를 사용합니다.")
                 reviews = _get_sample_reviews()
 
+            # 원본 리뷰 저장 (속성 분석용)
+            st.session_state.raw_reviews = reviews
+
             # 전처리
             with st.spinner("🔧 전처리 중..."):
                 preprocessor = create_default_preprocessor(chunk_size=300)
@@ -271,6 +289,9 @@ def _load_sample_data():
     """샘플 데이터로 초기화."""
     reviews = _get_sample_reviews()
 
+    # 원본 리뷰 저장 (속성 분석용)
+    st.session_state.raw_reviews = reviews
+
     # 전처리
     preprocessor = create_default_preprocessor(chunk_size=300)
     processed = preprocessor.process_batch(reviews)
@@ -323,7 +344,9 @@ def render_main_content():
         return
 
     # 탭 구성
-    tab1, tab2, tab3 = st.tabs(["💬 채팅", "📊 분석", "📋 리뷰 목록"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "💬 채팅", "📊 분석", "🏷️ 속성 분석", "⚖️ 제품 비교", "📋 리뷰 목록"
+    ])
 
     with tab1:
         render_chat_interface()
@@ -332,6 +355,12 @@ def render_main_content():
         render_analysis_tab()
 
     with tab3:
+        render_aspect_analysis_tab()
+
+    with tab4:
+        render_product_comparison_tab()
+
+    with tab5:
         render_reviews_tab()
 
 
@@ -470,6 +499,388 @@ def render_analysis_tab():
 
             # 파이 차트 대신 바 차트 사용
             st.bar_chart(sentiment_counts)
+
+
+def render_aspect_analysis_tab():
+    """속성 분석 탭 렌더링."""
+    st.subheader("🏷️ 속성 분석 (Aspect-based Analysis)")
+    st.markdown("LLM을 활용하여 리뷰에서 속성(가격, 디자인, 품질 등)을 자동 추출하고 감정을 분석합니다.")
+
+    raw_reviews = st.session_state.raw_reviews
+    if not raw_reviews:
+        st.warning("데이터를 먼저 로드해주세요.")
+        return
+
+    # 속성 분석 실행 섹션
+    st.markdown("---")
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        analysis_count = st.slider(
+            "분석할 리뷰 수",
+            min_value=5,
+            max_value=min(50, len(raw_reviews)),
+            value=min(10, len(raw_reviews)),
+            step=5,
+            help="LLM API 호출 비용을 고려하여 적절한 수를 선택하세요."
+        )
+
+    with col2:
+        analyze_button = st.button("🔍 속성 분석 실행", use_container_width=True)
+
+    # 속성 분석 실행
+    if analyze_button:
+        with st.spinner(f"🔍 {analysis_count}개 리뷰 속성 분석 중..."):
+            try:
+                extractor = create_aspect_extractor(use_cache=True)
+
+                # 리뷰 텍스트 추출
+                review_texts = [
+                    {"text": r.text, "metadata": {"rating": r.rating, "date": r.date}}
+                    for r in raw_reviews[:analysis_count]
+                ]
+
+                # 진행 상황 표시
+                progress_bar = st.progress(0)
+                results = []
+
+                for i, review_data in enumerate(review_texts):
+                    result = extractor.extract(
+                        review_data["text"],
+                        metadata=review_data["metadata"]
+                    )
+                    results.append(result)
+                    progress_bar.progress((i + 1) / len(review_texts))
+
+                # 결과 저장
+                st.session_state.aspect_results = results
+                st.session_state.aspect_stats = extractor.get_aspect_statistics(results)
+
+                st.success(f"✅ {len(results)}개 리뷰 속성 분석 완료!")
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"속성 분석 실패: {e}")
+
+    # 결과 표시
+    if st.session_state.aspect_stats:
+        stats = st.session_state.aspect_stats
+        results = st.session_state.aspect_results
+
+        st.markdown("---")
+
+        # 메트릭 카드
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("분석된 리뷰", f"{stats['total_reviews']}개")
+
+        with col2:
+            st.metric("평균 신뢰도", f"{stats['avg_confidence']:.0%}")
+
+        with col3:
+            positive = stats['overall_sentiment']['positive']
+            total = stats['total_reviews']
+            st.metric("긍정 비율", f"{positive/total*100:.0f}%" if total > 0 else "0%")
+
+        with col4:
+            st.metric("추출된 속성", f"{sum(stats['aspect_counts'].values())}개")
+
+        st.markdown("---")
+
+        # 차트 영역
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("📊 속성별 언급 빈도")
+            if stats['aspect_counts']:
+                # 상위 8개만 표시
+                aspect_data = dict(list(stats['aspect_counts'].items())[:8])
+                st.bar_chart(aspect_data)
+            else:
+                st.info("추출된 속성이 없습니다.")
+
+        with col2:
+            st.subheader("🎭 속성별 감정 분포")
+            if stats['aspect_sentiment']:
+                # 속성별 긍정/부정 비율 차트
+                sentiment_data = {}
+                for category, sent in list(stats['aspect_sentiment'].items())[:6]:
+                    total = sent['positive'] + sent['negative'] + sent['neutral']
+                    if total > 0:
+                        sentiment_data[category] = {
+                            "긍정": sent['positive'],
+                            "부정": sent['negative'],
+                        }
+
+                if sentiment_data:
+                    import pandas as pd
+                    df = pd.DataFrame(sentiment_data).T
+                    st.bar_chart(df)
+            else:
+                st.info("감정 분석 데이터가 없습니다.")
+
+        st.markdown("---")
+
+        # 상세 결과 (필터링 가능)
+        st.subheader("📋 상세 분석 결과")
+
+        # 필터
+        col1, col2 = st.columns(2)
+        with col1:
+            category_options = ["전체"] + list(stats['aspect_counts'].keys())
+            selected_category = st.selectbox("속성 필터", category_options)
+
+        with col2:
+            sentiment_options = ["전체", "긍정", "부정", "중립"]
+            selected_sentiment = st.selectbox("감정 필터", sentiment_options)
+
+        # 결과 표시
+        for i, result in enumerate(results[:20]):  # 최대 20개
+            # 필터 적용
+            filtered_aspects = result.aspects
+
+            if selected_category != "전체":
+                filtered_aspects = [a for a in filtered_aspects if a["category"] == selected_category]
+
+            if selected_sentiment != "전체":
+                sentiment_map = {"긍정": "positive", "부정": "negative", "중립": "neutral"}
+                filtered_aspects = [a for a in filtered_aspects if a["sentiment"] == sentiment_map[selected_sentiment]]
+
+            if not filtered_aspects and selected_category != "전체":
+                continue
+
+            with st.expander(f"리뷰 {i+1}: {result.review_text[:50]}...", expanded=False):
+                col1, col2 = st.columns([1, 3])
+
+                with col1:
+                    sentiment_emoji = {"positive": "😊", "negative": "😞", "neutral": "😐"}
+                    st.markdown(f"**전체 감정:** {sentiment_emoji.get(result.overall_sentiment.value, '❓')} {result.overall_sentiment.value}")
+                    st.markdown(f"**신뢰도:** {result.confidence:.0%}")
+                    if result.metadata.get("rating"):
+                        st.markdown(f"**평점:** ⭐ {result.metadata['rating']}")
+
+                with col2:
+                    st.markdown("**원문:**")
+                    st.markdown(f"> {result.review_text[:200]}{'...' if len(result.review_text) > 200 else ''}")
+
+                if filtered_aspects:
+                    st.markdown("**추출된 속성:**")
+                    for asp in filtered_aspects:
+                        emoji = {"positive": "😊", "negative": "😞", "neutral": "😐"}.get(asp["sentiment"], "❓")
+                        st.markdown(f"- {emoji} **[{asp['category']}]** {asp['sentiment']}")
+                        st.markdown(f"  > \"{asp['text']}\"")
+
+
+def render_product_comparison_tab():
+    """제품 비교 탭 렌더링."""
+    st.subheader("⚖️ 제품/카테고리 비교")
+    st.markdown("여러 카테고리의 리뷰 속성을 비교 분석합니다.")
+
+    # 카테고리 목록
+    categories = ["패션", "화장품", "가전", "IT기기", "생활용품"]
+
+    st.markdown("---")
+
+    # 비교할 카테고리 선택
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**카테고리 A**")
+        category_a = st.selectbox(
+            "첫 번째 카테고리",
+            categories,
+            key="compare_cat_a",
+            index=0,
+        )
+        sample_a = st.slider(
+            "분석할 리뷰 수 (A)",
+            min_value=5,
+            max_value=30,
+            value=10,
+            key="sample_a",
+        )
+
+    with col2:
+        st.markdown("**카테고리 B**")
+        category_b = st.selectbox(
+            "두 번째 카테고리",
+            categories,
+            key="compare_cat_b",
+            index=1 if len(categories) > 1 else 0,
+        )
+        sample_b = st.slider(
+            "분석할 리뷰 수 (B)",
+            min_value=5,
+            max_value=30,
+            value=10,
+            key="sample_b",
+        )
+
+    # 비교 분석 실행
+    if st.button("🔍 비교 분석 실행", use_container_width=True):
+        if category_a == category_b:
+            st.warning("서로 다른 카테고리를 선택해주세요.")
+            return
+
+        with st.spinner("비교 분석 중..."):
+            try:
+                from src.pipeline.aihub_loader import AIHubDataLoader
+
+                loader = AIHubDataLoader(data_dir="data/aihub_data")
+                extractor = create_aspect_extractor(use_cache=True)
+
+                comparison_data = {}
+
+                # 카테고리 A 분석
+                progress = st.progress(0, text=f"{category_a} 리뷰 로드 중...")
+                reviews_a = loader.load_reviews(
+                    category=category_a,
+                    limit=sample_a,
+                    as_project_format=True,
+                )
+
+                if reviews_a:
+                    progress.progress(25, text=f"{category_a} 속성 추출 중...")
+                    results_a = []
+                    for i, r in enumerate(reviews_a):
+                        result = extractor.extract(r.text, {"rating": r.rating})
+                        results_a.append(result)
+                        progress.progress(25 + int(25 * (i + 1) / len(reviews_a)))
+
+                    comparison_data[category_a] = {
+                        "results": results_a,
+                        "stats": extractor.get_aspect_statistics(results_a),
+                    }
+
+                # 카테고리 B 분석
+                progress.progress(50, text=f"{category_b} 리뷰 로드 중...")
+                reviews_b = loader.load_reviews(
+                    category=category_b,
+                    limit=sample_b,
+                    as_project_format=True,
+                )
+
+                if reviews_b:
+                    progress.progress(75, text=f"{category_b} 속성 추출 중...")
+                    results_b = []
+                    for i, r in enumerate(reviews_b):
+                        result = extractor.extract(r.text, {"rating": r.rating})
+                        results_b.append(result)
+                        progress.progress(75 + int(25 * (i + 1) / len(reviews_b)))
+
+                    comparison_data[category_b] = {
+                        "results": results_b,
+                        "stats": extractor.get_aspect_statistics(results_b),
+                    }
+
+                progress.progress(100, text="완료!")
+
+                # 결과 저장
+                st.session_state.comparison_data = comparison_data
+                st.success("비교 분석 완료!")
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"비교 분석 실패: {e}")
+
+    # 비교 결과 표시
+    if st.session_state.comparison_data and len(st.session_state.comparison_data) >= 2:
+        comparison_data = st.session_state.comparison_data
+        cats = list(comparison_data.keys())
+
+        st.markdown("---")
+        st.subheader("📊 비교 분석 결과")
+
+        # 메트릭 비교
+        col1, col2 = st.columns(2)
+
+        with col1:
+            cat = cats[0]
+            stats = comparison_data[cat]["stats"]
+            st.markdown(f"### {cat}")
+            st.metric("분석 리뷰", f"{stats['total_reviews']}개")
+            positive = stats['overall_sentiment']['positive']
+            total = stats['total_reviews']
+            st.metric("긍정 비율", f"{positive/total*100:.0f}%" if total > 0 else "0%")
+            st.metric("평균 신뢰도", f"{stats['avg_confidence']:.0%}")
+
+        with col2:
+            cat = cats[1]
+            stats = comparison_data[cat]["stats"]
+            st.markdown(f"### {cat}")
+            st.metric("분석 리뷰", f"{stats['total_reviews']}개")
+            positive = stats['overall_sentiment']['positive']
+            total = stats['total_reviews']
+            st.metric("긍정 비율", f"{positive/total*100:.0f}%" if total > 0 else "0%")
+            st.metric("평균 신뢰도", f"{stats['avg_confidence']:.0%}")
+
+        st.markdown("---")
+
+        # 속성 빈도 비교 차트
+        st.subheader("📊 속성별 언급 빈도 비교")
+
+        import pandas as pd
+
+        # 모든 속성 수집
+        all_aspects = set()
+        for cat in cats:
+            all_aspects.update(comparison_data[cat]["stats"]["aspect_counts"].keys())
+
+        # 데이터 구성
+        chart_data = {}
+        for aspect in all_aspects:
+            chart_data[aspect] = {}
+            for cat in cats:
+                chart_data[aspect][cat] = comparison_data[cat]["stats"]["aspect_counts"].get(aspect, 0)
+
+        if chart_data:
+            df = pd.DataFrame(chart_data).T
+            st.bar_chart(df)
+
+        st.markdown("---")
+
+        # 감정 분포 비교
+        st.subheader("🎭 감정 분포 비교")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            cat = cats[0]
+            sent = comparison_data[cat]["stats"]["overall_sentiment"]
+            st.markdown(f"**{cat}**")
+            st.bar_chart({"긍정": sent["positive"], "부정": sent["negative"], "중립": sent["neutral"]})
+
+        with col2:
+            cat = cats[1]
+            sent = comparison_data[cat]["stats"]["overall_sentiment"]
+            st.markdown(f"**{cat}**")
+            st.bar_chart({"긍정": sent["positive"], "부정": sent["negative"], "중립": sent["neutral"]})
+
+        st.markdown("---")
+
+        # 주요 인사이트
+        st.subheader("💡 주요 인사이트")
+
+        # 각 카테고리의 상위 속성 비교
+        for cat in cats:
+            stats = comparison_data[cat]["stats"]
+            top_aspects = list(stats["aspect_counts"].items())[:3]
+            if top_aspects:
+                aspects_str = ", ".join([f"{a[0]}({a[1]}회)" for a in top_aspects])
+                st.markdown(f"- **{cat}** 주요 속성: {aspects_str}")
+
+            # 긍정/부정 비율이 높은 속성
+            aspect_sent = stats.get("aspect_sentiment", {})
+            for aspect, sent in list(aspect_sent.items())[:2]:
+                total = sent["positive"] + sent["negative"] + sent["neutral"]
+                if total > 0:
+                    pos_rate = sent["positive"] / total * 100
+                    neg_rate = sent["negative"] / total * 100
+                    if pos_rate > 70:
+                        st.markdown(f"  - ✅ **{aspect}**: 긍정 비율 {pos_rate:.0f}%로 높음")
+                    elif neg_rate > 50:
+                        st.markdown(f"  - ⚠️ **{aspect}**: 부정 비율 {neg_rate:.0f}%로 주의 필요")
 
 
 def render_reviews_tab():

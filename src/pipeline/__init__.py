@@ -1,6 +1,12 @@
 # Pipeline module
 
-from .aihub_loader import AIHubDataLoader, AIHubReview
+# AIHub loader는 playwright 의존성이 있으므로 선택적으로 import
+try:
+    from .aihub_loader import AIHubDataLoader, AIHubReview
+except ImportError:
+    AIHubDataLoader = None  # type: ignore
+    AIHubReview = None  # type: ignore
+
 from .aspect_extractor import (
     AspectCategory,
     AspectExtractor,
