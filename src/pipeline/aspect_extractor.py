@@ -25,6 +25,24 @@ class Sentiment(str, Enum):
     NEGATIVE = "negative"
     NEUTRAL = "neutral"
 
+    @classmethod
+    def from_string(cls, value: str) -> "Sentiment":
+        """문자열에서 Sentiment 변환 (한글/영어 모두 지원)."""
+        # 한글 -> 영어 매핑
+        korean_map = {
+            "긍정": cls.POSITIVE,
+            "부정": cls.NEGATIVE,
+            "중립": cls.NEUTRAL,
+            "positive": cls.POSITIVE,
+            "negative": cls.NEGATIVE,
+            "neutral": cls.NEUTRAL,
+        }
+        normalized = value.lower().strip()
+        if normalized in korean_map:
+            return korean_map[normalized]
+        # 기본값
+        return cls.NEUTRAL
+
 
 class AspectCategory(str, Enum):
     """속성 카테고리."""
@@ -78,10 +96,11 @@ class AspectResult:
         metadata: dict[str, Any] | None = None,
     ) -> "AspectResult":
         """AspectExtractionResult에서 AspectResult 생성."""
+        # 속성별 감정도 정규화
         aspects = [
             {
                 "category": aspect.category,
-                "sentiment": aspect.sentiment,
+                "sentiment": Sentiment.from_string(aspect.sentiment).value,
                 "text": aspect.text,
                 "keywords": aspect.keywords,
             }
@@ -90,7 +109,7 @@ class AspectResult:
 
         return cls(
             review_text=review_text,
-            overall_sentiment=Sentiment(result.overall_sentiment),
+            overall_sentiment=Sentiment.from_string(result.overall_sentiment),
             confidence=result.confidence,
             aspects=aspects,
             metadata=metadata or {},
