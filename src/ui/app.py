@@ -164,24 +164,19 @@ def render_product_list():
         else:
             st.caption("📊 비교할 제품 선택")
 
-    # 제품이 없으면 로드 안내
-    if not products:
-        st.markdown("---")
-        st.info("카테고리를 선택하고 제품을 불러오세요.")
-
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            if st.button("📦 제품 불러오기", use_container_width=True, type="primary"):
-                load_products(selected_category)
-        return
-
-    # 카테고리 변경 시 자동 로드 (이미 제품이 있는 경우)
+    # 카테고리 상태 초기화
     if "last_category" not in st.session_state:
         st.session_state.last_category = selected_category
+
+    # 제품이 없거나 카테고리 변경 시 자동 로드
+    if not products:
+        load_products(selected_category)
+        return
 
     if st.session_state.last_category != selected_category:
         st.session_state.last_category = selected_category
         load_products(selected_category)
+        return
 
     # 필터링 및 정렬
     filtered_products = products
