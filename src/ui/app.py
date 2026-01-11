@@ -132,8 +132,8 @@ def render_product_list():
 
     products = st.session_state.products
 
-    # 상단: 카테고리 선택 + 검색 + 정렬 + 비교
-    col_cat, col_search, col_sort, col_compare = st.columns([1.5, 2, 1, 1.5])
+    # 상단 필터 (모두 동일한 레이블 구조)
+    col_cat, col_search, col_sort, col_compare = st.columns([1.2, 2.5, 1.2, 1.1])
 
     with col_cat:
         categories = ["전체", "패션", "화장품", "가전", "IT기기", "생활용품"]
@@ -144,25 +144,28 @@ def render_product_list():
         )
 
     with col_search:
-        search_query = st.text_input("🔍 검색", placeholder="제품명 검색...", label_visibility="collapsed")
+        search_query = st.text_input(
+            "검색",
+            placeholder="제품명 검색...",
+        )
 
     with col_sort:
         sort_option = st.selectbox(
             "정렬",
             ["리뷰 많은순", "평점 높은순", "평점 낮은순"],
-            label_visibility="collapsed",
         )
 
     with col_compare:
+        # 빈 레이블로 높이 맞춤
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
         compare_count = len(st.session_state.compare_products)
         if compare_count >= 2:
-            if st.button(f"📊 비교하기 ({compare_count})", use_container_width=True, type="primary"):
+            if st.button(f"📊 비교 ({compare_count})", use_container_width=True, type="primary"):
                 st.session_state.current_page = "compare"
                 st.rerun()
-        elif compare_count > 0:
-            st.caption(f"📊 {compare_count}/4 선택됨")
         else:
-            st.caption("📊 비교할 제품 선택")
+            if st.button(f"📊 비교 ({compare_count}/4)", use_container_width=True, disabled=True):
+                pass
 
     # 카테고리 상태 초기화
     if "last_category" not in st.session_state:
@@ -261,70 +264,70 @@ def render_product_list():
 
 def render_product_card(product: Product):
     """제품 카드 렌더링."""
-    with st.container():
-        # 카드 스타일
-        sentiment_ratio = product.get_sentiment_ratio()
-        positive_ratio = sentiment_ratio["긍정"]
+    sentiment_ratio = product.get_sentiment_ratio()
+    positive_ratio = sentiment_ratio["긍정"]
 
-        # 감정에 따른 색상
-        if positive_ratio >= 70:
-            sentiment_color = "🟢"
-            sentiment_text = "매우 긍정"
-        elif positive_ratio >= 50:
-            sentiment_color = "🟡"
-            sentiment_text = "보통"
+    # 감정에 따른 색상
+    if positive_ratio >= 70:
+        sentiment_color = "🟢"
+        sentiment_text = "매우 긍정"
+    elif positive_ratio >= 50:
+        sentiment_color = "🟡"
+        sentiment_text = "보통"
+    else:
+        sentiment_color = "🔴"
+        sentiment_text = "주의"
+
+    # 제품 제목 (2줄 고정)
+    display_name = product.name[:28] + "..." if len(product.name) > 28 else product.name
+    st.markdown(f"**📦 {display_name}**")
+
+    # 카테고리
+    st.caption(f"{product.category} > {product.main_category}")
+
+    # 평점 & 리뷰 수 (한 줄)
+    st.markdown(f"⭐ **{product.avg_rating:.1f}** · 📝 **{product.review_count}개**")
+
+    # 감정 상태
+    st.markdown(f"{sentiment_color} {sentiment_text} ({positive_ratio:.0f}% 긍정)")
+
+    # 주요 속성 태그 (3개 고정, 없으면 빈 태그)
+    aspects = product.top_aspects[:3] if product.top_aspects else ["-", "-", "-"]
+    while len(aspects) < 3:
+        aspects.append("-")
+    tags = " ".join([f"`{a}`" for a in aspects])
+    st.markdown(f"🏷️ {tags}")
+
+    # 비교 체크박스 + 상세 보기 버튼
+    col_compare, col_detail = st.columns([1, 2])
+
+    with col_compare:
+        is_in_compare = any(p.name == product.name for p in st.session_state.compare_products)
+        compare_disabled = len(st.session_state.compare_products) >= 4 and not is_in_compare
+
+        if st.checkbox(
+            "비교",
+            value=is_in_compare,
+            key=f"compare_{product.name}",
+            disabled=compare_disabled,
+        ):
+            if not is_in_compare:
+                st.session_state.compare_products.append(product)
+                st.rerun()
         else:
-            sentiment_color = "🔴"
-            sentiment_text = "주의"
-
-        # 카드 내용
-        st.markdown(f"### 📦 {product.name[:25]}{'...' if len(product.name) > 25 else ''}")
-        st.caption(f"{product.category} > {product.main_category}")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("평점", f"⭐ {product.avg_rating:.1f}")
-        with col2:
-            st.metric("리뷰", f"📝 {product.review_count}개")
-
-        st.markdown(f"{sentiment_color} **{sentiment_text}** ({positive_ratio:.0f}% 긍정)")
-
-        # 주요 속성 태그
-        if product.top_aspects:
-            tags = " ".join([f"`{a}`" for a in product.top_aspects[:3]])
-            st.markdown(f"🏷️ {tags}")
-
-        # 비교 체크박스 + 상세 보기 버튼
-        col_compare, col_detail = st.columns([1, 2])
-
-        with col_compare:
-            # 이미 비교 목록에 있는지 확인
-            is_in_compare = any(p.name == product.name for p in st.session_state.compare_products)
-            compare_disabled = len(st.session_state.compare_products) >= 4 and not is_in_compare
-
-            if st.checkbox(
-                "비교",
-                value=is_in_compare,
-                key=f"compare_{product.name}",
-                disabled=compare_disabled,
-            ):
-                if not is_in_compare:
-                    st.session_state.compare_products.append(product)
-                    st.rerun()
-            else:
-                if is_in_compare:
-                    st.session_state.compare_products = [
-                        p for p in st.session_state.compare_products if p.name != product.name
-                    ]
-                    st.rerun()
-
-        with col_detail:
-            if st.button("상세 보기", key=f"view_{product.name}", use_container_width=True):
-                st.session_state.selected_product = product
-                st.session_state.current_page = "product_detail"
+            if is_in_compare:
+                st.session_state.compare_products = [
+                    p for p in st.session_state.compare_products if p.name != product.name
+                ]
                 st.rerun()
 
-        st.markdown("---")
+    with col_detail:
+        if st.button("상세 보기", key=f"view_{product.name}", use_container_width=True):
+            st.session_state.selected_product = product
+            st.session_state.current_page = "product_detail"
+            st.rerun()
+
+    st.markdown("---")
 
 
 # =============================================================================
