@@ -228,31 +228,43 @@
 
 ## Phase 3: Agent System (멀티 에이전트 구현)
 
-### Epic 3.1: LangGraph 기반 에이전트 구조
+### Epic 3.1: LangGraph 기반 에이전트 구조 ✅
 
 | Task ID | Task | 상태 | 설명 |
 |---------|------|------|------|
-| 3.1.1 | [ ] AgentState 정의 | 대기 | TypedDict 상태 스키마 |
-| 3.1.2 | [ ] Intent Classifier 노드 | 대기 | 사용자 의도 분류 |
-| 3.1.3 | [ ] Conditional Router 구현 | 대기 | 의도별 에이전트 분기 |
-| 3.1.4 | [ ] StateGraph 구성 | 대기 | 노드/엣지 연결 |
-| 3.1.5 | [ ] 그래프 시각화 테스트 | 대기 | Mermaid 다이어그램 |
+| 3.1.1 | [x] AgentState 정의 | 완료 | `src/agents/state.py` |
+| 3.1.2 | [x] Intent Classifier 노드 | 완료 | `src/agents/intent_classifier.py` |
+| 3.1.3 | [x] Conditional Router 구현 | 완료 | `src/agents/graph.py` |
+| 3.1.4 | [x] StateGraph 구성 | 완료 | `src/agents/graph.py` |
+| 3.1.5 | [x] 그래프 시각화 테스트 | 완료 | `get_graph_visualization()` |
 
 **완료 기준:** 질문 유형에 따라 올바른 에이전트로 라우팅
 
+**구현 내용:**
+- `AgentState`: TypedDict 상태 스키마 (query, intent, response 등)
+- `IntentType`: QA, SUMMARY, COMPARE, UNKNOWN Enum
+- Intent Classifier: 하이브리드 방식 (규칙 기반 + LLM 기반)
+- StateGraph: START → Intent Classifier → Router → [QA|Summary|Compare] → END
+
 ---
 
-### Epic 3.2: 개별 에이전트 구현
+### Epic 3.2: 개별 에이전트 구현 ✅
 
 | Task ID | Task | 상태 | 설명 |
 |---------|------|------|------|
-| 3.2.1 | [ ] Summarize Agent 구현 | 대기 | 리뷰 요약 전용 |
-| 3.2.2 | [ ] Q&A Agent 구현 | 대기 | RAG 기반 질의응답 |
-| 3.2.3 | [ ] Compare Agent 구현 | 대기 | 상품 비교 분석 |
-| 3.2.4 | [ ] 에이전트 공통 인터페이스 | 대기 | BaseAgent 추상 클래스 |
-| 3.2.5 | [ ] 에이전트 단위 테스트 | 대기 | 각 에이전트별 테스트 |
+| 3.2.1 | [x] Summarize Agent 구현 | 완료 | `src/agents/summarize_agent.py` |
+| 3.2.2 | [x] Q&A Agent 구현 | 완료 | `src/agents/qa_agent.py` |
+| 3.2.3 | [x] Compare Agent 구현 | 완료 | `src/agents/compare_agent.py` |
+| 3.2.4 | [x] 에이전트 공통 인터페이스 | 완료 | `src/agents/base.py` |
+| 3.2.5 | [x] 에이전트 단위 테스트 | 완료 | `tests/test_agents.py` (8개 테스트) |
 
 **완료 기준:** 3가지 에이전트가 독립적으로 동작
+
+**구현 내용:**
+- `BaseAgent`: 추상 기본 클래스 (RAG Chain 래핑, 프롬프트 설정)
+- `QAAgent`: RAG 기반 질의응답 (qa 프롬프트)
+- `SummarizeAgent`: 리뷰 요약 (summary 프롬프트, top_k=10)
+- `CompareAgent`: 제품 비교 분석 (compare 프롬프트)
 
 ---
 
@@ -445,11 +457,11 @@
 |-------|---------|------|--------|
 | Phase 1: Foundation | 4 | 4 | 100% |
 | Phase 2: Core RAG | 4 | 4 | 100% |
-| Phase 3: Agent System | 3 | 0 | 0% |
+| Phase 3: Agent System | 3 | 2 | 67% |
 | Phase 4: UI & Polish | 4 | 2 | 50% |
 | Phase 5: Deployment | 3 | 0 | 0% |
 | Phase 6: Testing & Docs | 2 | 1 | 50% |
-| **Total** | **20** | **11** | **55%** |
+| **Total** | **20** | **13** | **65%** |
 
 ---
 
@@ -469,6 +481,8 @@
 
 **추가 완료 사항:**
 - [x] 4.4.1 ~ 4.4.5: 쇼핑몰 스타일 UI ✅ (Issue #21)
+- [x] 3.1.1 ~ 3.1.5: LangGraph 에이전트 구조 ✅
+- [x] 3.2.1 ~ 3.2.5: 개별 에이전트 구현 ✅
 
 ---
 
@@ -480,4 +494,4 @@
 
 ---
 
-*최종 업데이트: 2026-01-11 (Epic 2.4 완료: 제품 비교 뷰, 사용자 리뷰 추가 기능)*
+*최종 업데이트: 2026-01-12 (Epic 3.1~3.2 완료: LangGraph 멀티 에이전트 시스템)*
