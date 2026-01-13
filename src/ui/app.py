@@ -23,12 +23,18 @@ from dotenv import load_dotenv
 # 환경변수 로드
 load_dotenv()
 
+from src.core.logging import get_logger, setup_logging
+from src.core.exceptions import ReviewAnalystError, RateLimitError, AuthenticationError
 from src.pipeline.aihub_loader import AIHubDataLoader, Product
 from src.pipeline.aspect_extractor import create_aspect_extractor
 from src.pipeline.preprocessor import create_default_preprocessor
 from src.pipeline.embedder import create_embedder
 from src.chains.rag_chain import create_rag_chain
 from src.pipeline.user_review_store import UserReview, create_user_review_store
+
+# 로깅 초기화
+setup_logging(level="INFO")
+logger = get_logger(__name__)
 
 
 # =============================================================================
@@ -136,6 +142,12 @@ def get_user_friendly_error(error: Exception) -> tuple[str, str]:
     Returns:
         (에러 메시지, 해결 방법) 튜플
     """
+    # 커스텀 예외 클래스 처리
+    if isinstance(error, ReviewAnalystError):
+        msg = f"⚠️ {error.message}"
+        solution = error.suggestion or f"상세: {error.details or str(error)[:100]}"
+        return (msg, solution)
+
     error_str = str(error).lower()
 
     # API 키 관련
@@ -181,7 +193,10 @@ def get_user_friendly_error(error: Exception) -> tuple[str, str]:
 
 
 def show_error(error: Exception, context: str = ""):
-    """사용자 친화적 에러 표시."""
+    """사용자 친화적 에러 표시 + 로깅."""
+    # 로그에 에러 기록
+    logger.error(f"{context}: {type(error).__name__}: {error}", exc_info=True)
+
     msg, solution = get_user_friendly_error(error)
     if context:
         msg = f"{context}: {msg}"

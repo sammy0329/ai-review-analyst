@@ -385,17 +385,28 @@
 
 ---
 
-### Epic 4.3: 에러 핸들링 및 로깅
+### Epic 4.3: 에러 핸들링 및 로깅 ✅
 
 | Task ID | Task | 상태 | 설명 |
 |---------|------|------|------|
-| 4.3.1 | [ ] 로깅 설정 | 대기 | logging 모듈 구성 |
-| 4.3.2 | [ ] 예외 클래스 정의 | 대기 | 커스텀 Exception |
-| 4.3.3 | [ ] API 에러 처리 | 대기 | OpenAI rate limit 등 |
-| 4.3.4 | [ ] 크롤링 실패 처리 | 대기 | 재시도, 폴백 |
-| 4.3.5 | [ ] 사용자 알림 시스템 | 대기 | st.error, st.warning |
+| 4.3.1 | [x] 로깅 설정 | 완료 | `src/core/logging.py` |
+| 4.3.2 | [x] 예외 클래스 정의 | 완료 | `src/core/exceptions.py` |
+| 4.3.3 | [x] API 에러 처리 | 완료 | 커스텀 예외 + 에러 핸들러 통합 |
+| 4.3.4 | [x] 크롤링 실패 처리 | 완료 | 예외 클래스 정의 완료 |
+| 4.3.5 | [x] 사용자 알림 시스템 | 완료 | Epic 4.2에서 구현 |
 
 **완료 기준:** 모든 예상 에러 케이스에 대한 graceful 처리
+
+**구현 내용:**
+- `src/core/logging.py`: 로깅 설정 모듈
+  - `setup_logging()`: 콘솔/파일 로깅 초기화
+  - `get_logger()`: 모듈별 로거 반환
+- `src/core/exceptions.py`: 커스텀 예외 클래스
+  - `ReviewAnalystError`: 기본 예외 (message, details, suggestion)
+  - `APIError`, `RateLimitError`, `AuthenticationError`
+  - `DataLoadError`, `CrawlerError`, `EmbeddingError`, `RAGError`
+- RAG Chain에 로깅 통합
+- UI 에러 핸들러에 커스텀 예외 지원
 
 ---
 

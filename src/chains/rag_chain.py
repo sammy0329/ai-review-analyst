@@ -14,8 +14,11 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_openai import ChatOpenAI
 
+from src.core.logging import get_logger
 from src.pipeline.embedder import ReviewEmbedder, create_embedder
 from src.prompts.templates import QA_PROMPT, SUMMARY_PROMPT, get_prompt, PromptTemplate
+
+logger = get_logger(__name__)
 
 
 # 기본 프롬프트 (prompts 모듈에서 가져옴)
@@ -145,11 +148,15 @@ class ReviewRAGChain:
         Returns:
             RAGResponse 객체
         """
+        logger.info(f"RAG 질의: {question[:50]}...")
+
         # 관련 문서 검색
         source_docs = self._retriever.invoke(question)
+        logger.debug(f"검색된 문서: {len(source_docs)}개")
 
         # 답변 생성
         answer = self._chain.invoke(question)
+        logger.info(f"답변 생성 완료 (길이: {len(answer)}자)")
 
         return RAGResponse(
             answer=answer,
