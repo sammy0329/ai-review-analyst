@@ -62,7 +62,7 @@ typing           # 타입 힌팅
 
 | 항목 | 내용 |
 |------|------|
-| **버전** | 0.1.x (최신 안정 버전) |
+| **버전** | 0.3.x (최신 안정 버전) |
 | **역할** | LLM 애플리케이션 오케스트레이션 프레임워크 |
 | **선택 이유** | Chain/Agent 추상화, 풍부한 통합 생태계, 활발한 커뮤니티 |
 | **공식 문서** | https://python.langchain.com/docs/ |
@@ -99,7 +99,7 @@ qa_chain = RetrievalQA.from_chain_type(
 
 | 항목 | 내용 |
 |------|------|
-| **버전** | 0.0.x (최신) |
+| **버전** | 0.2.x (최신) |
 | **역할** | 복잡한 에이전트 워크플로우 제어 |
 | **선택 이유** | 상태 기반 그래프 구조, 조건부 라우팅, 순환 처리 가능 |
 | **공식 문서** | https://langchain-ai.github.io/langgraph/ |
@@ -230,7 +230,7 @@ RAG (검색 증강 생성)에서 사용자 질문과 **의미적으로 관련된
 
 | 항목 | 내용 |
 |------|------|
-| **버전** | 0.4.x |
+| **버전** | 0.5.x |
 | **역할** | 리뷰 텍스트 임베딩 저장 및 시맨틱 검색 |
 | **선택 이유** | 로컬 개발 용이, 설치 간편, Python 네이티브 |
 | **공식 문서** | https://docs.trychroma.com/ |
@@ -544,29 +544,39 @@ EOF
 ### requirements.txt
 ```
 # Core
-python-dotenv==1.0.0
-pydantic==2.5.0
+python-dotenv==1.0.1
+pydantic==2.10.4
+pydantic-settings==2.7.1
 
 # LLM Framework
-langchain==0.1.0
-langchain-openai==0.0.5
-langchain-chroma==0.0.1
-langgraph==0.0.20
+langchain==0.3.14
+langchain-openai==0.3.0
+langchain-chroma==0.2.0
+langchain-community==0.3.14
+langgraph==0.2.60
 
 # Vector DB
-chromadb==0.4.22
+chromadb==0.5.23
 
 # Web Crawling
-playwright==1.40.0
-beautifulsoup4==4.12.2
-lxml==5.1.0
+playwright==1.49.1
+playwright-stealth==1.0.6
+beautifulsoup4==4.12.3
+lxml==5.3.0
 
 # Frontend
-streamlit==1.30.0
+streamlit==1.41.1
 
 # Utilities
-tenacity==8.2.3      # 재시도 로직
-tiktoken==0.5.2      # 토큰 카운팅
+tenacity==9.0.0      # 재시도 로직
+tiktoken==0.8.0      # 토큰 카운팅
+httpx==0.28.1
+datasets==3.2.0
+
+# Development
+pytest==8.3.4
+pytest-cov==6.0.0
+pytest-asyncio==0.25.2
 ```
 
 ---
