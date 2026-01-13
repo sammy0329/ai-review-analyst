@@ -4,10 +4,14 @@ AI Review Analyst - Streamlit 대시보드 (쇼핑몰 스타일).
 제품 목록 → 제품 상세 → 리뷰 분석/Q&A 형태의 UI를 제공합니다.
 """
 
+import io
+import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 
 # 프로젝트 루트 경로 추가
@@ -28,6 +32,164 @@ from src.pipeline.user_review_store import UserReview, create_user_review_store
 
 
 # =============================================================================
+# 다운로드 헬퍼 함수
+# =============================================================================
+
+def get_product_summary_json(product: Product) -> str:
+    """제품 요약 정보를 JSON으로 변환."""
+    sentiment_ratio = product.get_sentiment_ratio()
+
+    summary = {
+        "product_name": product.name,
+        "category": product.category,
+        "main_category": product.main_category,
+        "avg_rating": round(product.avg_rating, 2),
+        "review_count": product.review_count,
+        "sentiment_ratio": {
+            "positive": round(sentiment_ratio["긍정"], 1),
+            "neutral": round(sentiment_ratio["중립"], 1),
+            "negative": round(sentiment_ratio["부정"], 1),
+        },
+        "top_aspects": product.top_aspects[:10],
+        "exported_at": datetime.now().isoformat(),
+    }
+
+    return json.dumps(summary, ensure_ascii=False, indent=2)
+
+
+def get_reviews_csv(product: Product) -> str:
+    """리뷰 목록을 CSV로 변환."""
+    reviews_data = []
+
+    for review in product.reviews:
+        polarity_map = {1: "긍정", 0: "중립", -1: "부정"}
+        # AIHubReview 속성 사용
+        rating = review.review_score / 20 if review.review_score >= 0 else None
+        # aspects는 dict 리스트, Aspect 키 추출
+        aspect_names = [asp.get("Aspect", "") for asp in review.aspects if asp.get("Aspect")]
+
+        reviews_data.append({
+            "텍스트": review.raw_text,
+            "평점": rating,
+            "감정": polarity_map.get(review.general_polarity, "알 수 없음"),
+            "날짜": review.date or "",
+            "속성": ", ".join(aspect_names),
+        })
+
+    df = pd.DataFrame(reviews_data)
+    return df.to_csv(index=False, encoding="utf-8-sig")
+
+
+def get_aspects_json(product: Product) -> str:
+    """속성 분석 결과를 JSON으로 변환."""
+    aspect_sentiments = {}
+
+    for review in product.reviews:
+        if not review.aspects:
+            continue
+
+        # AIHubReview의 aspects는 dict 리스트: [{"Aspect": "배송", "SentimentPolarity": 1}, ...]
+        for asp_data in review.aspects:
+            aspect_name = asp_data.get("Aspect", "")
+            if not aspect_name:
+                continue
+
+            # 속성별 감정 (SentimentPolarity 사용, 없으면 리뷰 전체 감정 사용)
+            polarity = asp_data.get("SentimentPolarity", review.general_polarity)
+            polarity_map = {1: "positive", 0: "neutral", -1: "negative"}
+            sentiment = polarity_map.get(polarity, "neutral")
+
+            if aspect_name not in aspect_sentiments:
+                aspect_sentiments[aspect_name] = {"positive": 0, "neutral": 0, "negative": 0, "total": 0}
+
+            aspect_sentiments[aspect_name][sentiment] += 1
+            aspect_sentiments[aspect_name]["total"] += 1
+
+    # 정렬 (total 기준)
+    sorted_aspects = sorted(
+        aspect_sentiments.items(),
+        key=lambda x: x[1]["total"],
+        reverse=True,
+    )
+
+    result = {
+        "product_name": product.name,
+        "aspects": [
+            {
+                "name": aspect,
+                "positive": data["positive"],
+                "neutral": data["neutral"],
+                "negative": data["negative"],
+                "total": data["total"],
+            }
+            for aspect, data in sorted_aspects
+        ],
+        "exported_at": datetime.now().isoformat(),
+    }
+
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+def get_user_friendly_error(error: Exception) -> tuple[str, str]:
+    """에러를 사용자 친화적 메시지로 변환.
+
+    Returns:
+        (에러 메시지, 해결 방법) 튜플
+    """
+    error_str = str(error).lower()
+
+    # API 키 관련
+    if "api key" in error_str or "authentication" in error_str or "401" in error_str:
+        return (
+            "🔑 API 인증에 실패했습니다.",
+            "`.env` 파일의 `OPENAI_API_KEY`가 올바른지 확인해주세요.",
+        )
+
+    # Rate limit
+    if "rate limit" in error_str or "429" in error_str:
+        return (
+            "⏳ API 요청 한도를 초과했습니다.",
+            "잠시 후 다시 시도해주세요. (약 1분 대기)",
+        )
+
+    # 네트워크 오류
+    if "connection" in error_str or "timeout" in error_str or "network" in error_str:
+        return (
+            "🌐 네트워크 연결에 문제가 있습니다.",
+            "인터넷 연결을 확인하고 다시 시도해주세요.",
+        )
+
+    # 파일 관련
+    if "file not found" in error_str or "no such file" in error_str:
+        return (
+            "📁 파일을 찾을 수 없습니다.",
+            "데이터 파일 경로를 확인해주세요.",
+        )
+
+    # 메모리 관련
+    if "memory" in error_str or "oom" in error_str:
+        return (
+            "💾 메모리가 부족합니다.",
+            "다른 프로그램을 종료하거나 데이터 크기를 줄여주세요.",
+        )
+
+    # 기본 메시지
+    return (
+        "⚠️ 오류가 발생했습니다.",
+        f"상세: {str(error)[:100]}",
+    )
+
+
+def show_error(error: Exception, context: str = ""):
+    """사용자 친화적 에러 표시."""
+    msg, solution = get_user_friendly_error(error)
+    if context:
+        msg = f"{context}: {msg}"
+    st.error(msg)
+    st.caption(solution)
+
+
+# =============================================================================
 # 페이지 설정
 # =============================================================================
 
@@ -37,6 +199,94 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+# =============================================================================
+# 반응형 CSS
+# =============================================================================
+
+st.markdown("""
+<style>
+/* 모바일 반응형 (768px 이하) */
+@media (max-width: 768px) {
+    /* 메인 컨테이너 패딩 조정 */
+    .main .block-container {
+        padding: 1rem 0.5rem;
+    }
+
+    /* 제목 크기 조정 */
+    h1 {
+        font-size: 1.5rem !important;
+    }
+    h2 {
+        font-size: 1.25rem !important;
+    }
+    h3 {
+        font-size: 1.1rem !important;
+    }
+
+    /* 메트릭 카드 크기 조정 */
+    [data-testid="stMetric"] {
+        padding: 0.5rem;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.2rem !important;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 0.8rem !important;
+    }
+
+    /* 버튼 크기 조정 */
+    .stButton > button {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.85rem;
+    }
+
+    /* 탭 (라디오 버튼) 스크롤 가능하게 */
+    [data-testid="stHorizontalBlock"] {
+        overflow-x: auto;
+        flex-wrap: nowrap !important;
+    }
+
+    /* 제품 카드 1열로 */
+    [data-testid="column"] {
+        min-width: 100% !important;
+    }
+
+    /* expander 헤더 크기 */
+    .streamlit-expanderHeader {
+        font-size: 0.9rem !important;
+    }
+
+    /* 채팅 입력창 */
+    [data-testid="stChatInput"] textarea {
+        font-size: 16px !important; /* iOS 줌 방지 */
+    }
+}
+
+/* 태블릿 반응형 (769px ~ 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .main .block-container {
+        padding: 1rem 1rem;
+    }
+
+    h1 {
+        font-size: 1.75rem !important;
+    }
+}
+
+/* 제품 카드 스타일 개선 */
+.product-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    transition: box-shadow 0.2s;
+}
+.product-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+</style>
+""", unsafe_allow_html=True)
 
 
 # =============================================================================
@@ -119,7 +369,7 @@ def load_products(category: str):
             st.rerun()
 
         except Exception as e:
-            st.error(f"제품 로드 실패: {e}")
+            show_error(e, "제품 로드")
 
 
 # =============================================================================
@@ -396,6 +646,43 @@ def render_product_detail():
 
     with col4:
         st.metric("부정 비율", f"{sentiment_ratio['부정']:.0f}%")
+
+    # 다운로드 버튼
+    with st.expander("📥 데이터 다운로드"):
+        dl_col1, dl_col2, dl_col3 = st.columns(3)
+
+        # 안전한 파일명 생성
+        safe_filename = "".join(c if c.isalnum() or c in "-_" else "_" for c in product.name[:30])
+
+        with dl_col1:
+            summary_json = get_product_summary_json(product)
+            st.download_button(
+                label="📊 요약 (JSON)",
+                data=summary_json,
+                file_name=f"{safe_filename}_summary.json",
+                mime="application/json",
+                use_container_width=True,
+            )
+
+        with dl_col2:
+            reviews_csv = get_reviews_csv(product)
+            st.download_button(
+                label="📋 리뷰 (CSV)",
+                data=reviews_csv,
+                file_name=f"{safe_filename}_reviews.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+        with dl_col3:
+            aspects_json = get_aspects_json(product)
+            st.download_button(
+                label="🏷️ 속성 분석 (JSON)",
+                data=aspects_json,
+                file_name=f"{safe_filename}_aspects.json",
+                mime="application/json",
+                use_container_width=True,
+            )
 
     st.markdown("---")
 
@@ -721,7 +1008,7 @@ def render_product_qa(product: Product):
                 st.session_state.current_rag_product = product_name
 
             except Exception as e:
-                st.error(f"Q&A 시스템 초기화 실패: {e}")
+                show_error(e, "Q&A 시스템 초기화")
                 return
 
     # 예시 질문
@@ -756,31 +1043,34 @@ def render_product_qa(product: Product):
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # AI 응답 생성
+        # AI 응답 생성 (스트리밍)
         with st.chat_message("assistant"):
-            with st.spinner("답변 생성 중..."):
-                try:
-                    rag_chain = st.session_state.product_rag_chain
-                    result = rag_chain.query_with_sources(prompt)
+            try:
+                rag_chain = st.session_state.product_rag_chain
 
-                    st.markdown(result["answer"])
+                # 스트리밍 + 출처 가져오기
+                stream, sources = rag_chain.stream_with_sources(prompt)
 
-                    # 출처 표시
-                    if result["sources"]:
-                        with st.expander("📚 참조 리뷰"):
-                            for i, source in enumerate(result["sources"], 1):
-                                st.markdown(f"**[{i}]**")
-                                st.markdown(f"> {source['text'][:200]}...")
-                                st.markdown("---")
+                # 스트리밍 응답 표시
+                answer = st.write_stream(stream)
 
-                    # 메시지 저장
-                    messages.append({
-                        "role": "assistant",
-                        "content": result["answer"],
-                    })
+                # 출처 표시
+                if sources:
+                    with st.expander("📚 참조 리뷰"):
+                        for i, source in enumerate(sources, 1):
+                            rating = source.get("rating", "N/A")
+                            st.markdown(f"**[{i}]** ⭐ {rating}")
+                            st.markdown(f"> {source['text'][:300]}...")
+                            st.markdown("---")
 
-                except Exception as e:
-                    st.error(f"오류 발생: {e}")
+                # 메시지 저장
+                messages.append({
+                    "role": "assistant",
+                    "content": answer,
+                })
+
+            except Exception as e:
+                show_error(e, "답변 생성")
 
 
 def render_product_reviews(product: Product):
@@ -980,7 +1270,7 @@ def render_add_review(product: Product):
                     st.rerun()
 
                 except Exception as e:
-                    st.error(f"분석 중 오류가 발생했습니다: {e}")
+                    show_error(e, "리뷰 분석")
         else:
             st.warning("리뷰 내용을 입력해주세요.")
 
@@ -1254,7 +1544,15 @@ def main():
     """메인 함수."""
     # API 키 확인
     if not check_api_key():
-        st.error("❌ OpenAI API 키가 필요합니다. `.env` 파일에 `OPENAI_API_KEY`를 설정하세요.")
+        st.error("🔑 OpenAI API 키가 필요합니다")
+        st.markdown("""
+        **설정 방법:**
+        1. 프로젝트 루트에 `.env` 파일 생성
+        2. 다음 내용 추가: `OPENAI_API_KEY=sk-your-api-key`
+        3. 앱 재시작
+
+        API 키는 [OpenAI 대시보드](https://platform.openai.com/api-keys)에서 발급받을 수 있습니다.
+        """)
         st.stop()
 
     # 페이지 라우팅

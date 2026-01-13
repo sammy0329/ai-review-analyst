@@ -216,6 +216,32 @@ class ReviewRAGChain:
             "metadata": response.metadata,
         }
 
+    def stream_with_sources(self, question: str) -> tuple[Iterator[str], list[dict[str, Any]]]:
+        """
+        스트리밍 방식으로 답변 생성 + 출처 반환.
+
+        Args:
+            question: 사용자 질문
+
+        Returns:
+            (스트림 이터레이터, 출처 리스트) 튜플
+        """
+        # 먼저 출처 문서 검색
+        source_docs = self._retriever.invoke(question)
+
+        sources = []
+        for doc in source_docs:
+            text = doc.metadata.get("original_text") or doc.page_content
+            sources.append({
+                "text": text,
+                "rating": doc.metadata.get("rating"),
+                "date": doc.metadata.get("date"),
+                "review_hash": doc.metadata.get("review_hash"),
+            })
+
+        # 스트리밍 이터레이터 반환
+        return self._chain.stream(question), sources
+
     def update_config(self, **kwargs) -> None:
         """
         설정 업데이트.
