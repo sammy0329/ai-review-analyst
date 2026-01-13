@@ -6,32 +6,33 @@
 
 ## Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         TECH STACK OVERVIEW                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│   ┌─────────────────────────────────────────────────────────────────┐   │
-│   │                        PRESENTATION LAYER                        │   │
-│   │                         [ Streamlit ]                            │   │
-│   └─────────────────────────────────────────────────────────────────┘   │
-│                                    │                                     │
-│   ┌─────────────────────────────────────────────────────────────────┐   │
-│   │                       APPLICATION LAYER                          │   │
-│   │     [ LangChain ]  ←→  [ LangGraph ]  ←→  [ OpenAI API ]        │   │
-│   └─────────────────────────────────────────────────────────────────┘   │
-│                                    │                                     │
-│   ┌─────────────────────────────────────────────────────────────────┐   │
-│   │                          DATA LAYER                              │   │
-│   │   [ Playwright ]  →  [ BeautifulSoup ]  →  [ ChromaDB/SQLite ]  │   │
-│   └─────────────────────────────────────────────────────────────────┘   │
-│                                    │                                     │
-│   ┌─────────────────────────────────────────────────────────────────┐   │
-│   │                      INFRASTRUCTURE LAYER                        │   │
-│   │              [ Docker ]  ←→  [ AWS EC2 (Free Tier) ]            │   │
-│   └─────────────────────────────────────────────────────────────────┘   │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Presentation["🎨 Presentation Layer"]
+        Streamlit[Streamlit]
+    end
+
+    subgraph Application["⚙️ Application Layer"]
+        LangChain[LangChain]
+        LangGraph[LangGraph]
+        OpenAI[OpenAI API]
+        LangChain <--> LangGraph
+        LangGraph <--> OpenAI
+    end
+
+    subgraph Data["💾 Data Layer"]
+        AIHub[AI Hub 데이터]
+        ChromaDB[(ChromaDB)]
+        AIHub --> ChromaDB
+    end
+
+    subgraph Infrastructure["☁️ Infrastructure"]
+        EC2[AWS EC2]
+    end
+
+    Presentation --> Application
+    Application --> Data
+    Data --> Infrastructure
 ```
 
 ---
@@ -277,45 +278,9 @@ results = vectorstore.similarity_search(
 
 ---
 
-## 5. Metadata Database
+## 5. Web Crawling
 
-### SQLite
-
-| 항목 | 내용 |
-|------|------|
-| **역할** | 상품 메타데이터, 크롤링 히스토리 저장 |
-| **선택 이유** | 별도 서버 불필요, Python 표준 라이브러리 |
-| **공식 문서** | https://docs.python.org/3/library/sqlite3.html |
-
-**스키마 예시:**
-```sql
--- 상품 정보
-CREATE TABLE products (
-    id TEXT PRIMARY KEY,
-    url TEXT NOT NULL,
-    name TEXT,
-    price INTEGER,
-    total_reviews INTEGER,
-    avg_rating REAL,
-    crawled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- 크롤링 히스토리
-CREATE TABLE crawl_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    product_id TEXT,
-    status TEXT,  -- 'success', 'failed', 'pending'
-    reviews_count INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (product_id) REFERENCES products(id)
-);
-```
-
----
-
-## 6. Web Crawling
-
-### 6.1 Playwright
+### 5.1 Playwright
 
 | 항목 | 내용 |
 |------|------|
@@ -371,7 +336,7 @@ async def crawl_reviews(url: str) -> list[dict]:
 
 ---
 
-### 6.2 BeautifulSoup4
+### 5.2 BeautifulSoup4
 
 | 항목 | 내용 |
 |------|------|
@@ -402,7 +367,7 @@ def parse_review_html(html: str) -> dict:
 
 ---
 
-## 7. Frontend
+## 6. Frontend
 
 ### Streamlit
 
@@ -459,63 +424,9 @@ if prompt := st.chat_input("리뷰에 대해 질문하세요"):
 
 ---
 
-## 8. Deployment
+## 7. Deployment
 
-### 8.1 Docker
-
-| 항목 | 내용 |
-|------|------|
-| **역할** | 애플리케이션 컨테이너화 |
-| **선택 이유** | 환경 일관성, 배포 간편화 |
-| **공식 문서** | https://docs.docker.com/ |
-
-**Dockerfile 예시:**
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# 시스템 의존성 (Playwright용)
-RUN apt-get update && apt-get install -y \
-    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
-    libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
-    libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Python 의존성
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Playwright 브라우저 설치
-RUN playwright install chromium
-
-# 소스 코드
-COPY . .
-
-EXPOSE 8501
-
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
-```
-
-**docker-compose.yml:**
-```yaml
-version: '3.8'
-
-services:
-  app:
-    build: .
-    ports:
-      - "8501:8501"
-    volumes:
-      - ./data:/app/data  # ChromaDB 영속성
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    restart: unless-stopped
-```
-
----
-
-### 8.2 AWS EC2 (Free Tier)
+### AWS EC2 (Free Tier)
 
 | 항목 | 내용 |
 |------|------|
@@ -523,65 +434,59 @@ services:
 | **스토리지** | 30GB EBS (Free Tier) |
 | **비용** | 월 750시간 무료 (1년) |
 
-**배포 스크립트:**
+**실행 방법:**
 ```bash
-#!/bin/bash
-# deploy.sh
-
-# EC2 접속
-ssh -i "key.pem" ec2-user@your-ec2-ip << 'EOF'
-    cd ~/ai-review-analyst
-    git pull origin main
-    docker-compose down
-    docker-compose up -d --build
-EOF
+# EC2에서 직접 실행
+cd ~/ai-review-analyst
+source venv/bin/activate
+streamlit run src/ui/app.py --server.port=8501 --server.address=0.0.0.0
 ```
 
 ---
 
-## 9. Dependencies Summary
+## 8. Dependencies Summary
 
 ### requirements.txt
 ```
 # Core
-python-dotenv==1.0.1
-pydantic==2.10.4
-pydantic-settings==2.7.1
+python-dotenv==1.0.1         # 환경 변수 관리
+pydantic==2.10.4             # 데이터 검증
+pydantic-settings==2.7.1     # 설정 관리
 
 # LLM Framework
-langchain==0.3.14
-langchain-openai==0.3.0
-langchain-chroma==0.2.0
-langchain-community==0.3.14
-langgraph==0.2.60
+langchain==0.3.14            # LLM 오케스트레이션
+langchain-openai==0.3.0      # OpenAI 통합
+langchain-chroma==0.2.0      # ChromaDB 통합
+langchain-community==0.3.14  # 커뮤니티 통합
+langgraph==0.2.60            # 에이전트 워크플로우
 
 # Vector DB
-chromadb==0.5.23
+chromadb==0.5.23             # 벡터 데이터베이스
 
-# Web Crawling
-playwright==1.49.1
-playwright-stealth==1.0.6
-beautifulsoup4==4.12.3
-lxml==5.3.0
+# Web Crawling (크롤러 테스트용)
+playwright==1.49.1           # 동적 웹페이지 크롤링
+playwright-stealth==1.0.6    # 봇 탐지 우회
+beautifulsoup4==4.12.3       # HTML 파싱
+lxml==5.3.0                  # XML/HTML 파서
 
 # Frontend
-streamlit==1.41.1
+streamlit==1.41.1            # 웹 대시보드 UI
 
 # Utilities
-tenacity==9.0.0      # 재시도 로직
-tiktoken==0.8.0      # 토큰 카운팅
-httpx==0.28.1
-datasets==3.2.0
+tenacity==9.0.0              # 재시도 로직
+tiktoken==0.8.0              # 토큰 카운팅
+httpx==0.28.1                # HTTP 클라이언트
+datasets==3.2.0              # HuggingFace 데이터셋
 
 # Development
-pytest==8.3.4
-pytest-cov==6.0.0
-pytest-asyncio==0.25.2
+pytest==8.3.4                # 테스트 프레임워크
+pytest-cov==6.0.0            # 테스트 커버리지
+pytest-asyncio==0.25.2       # 비동기 테스트
 ```
 
 ---
 
-## 10. 기술 스택 선택 근거 요약
+## 9. 기술 스택 선택 근거 요약
 
 | 레이어 | 선택 기술 | 핵심 선택 이유 |
 |--------|-----------|----------------|
@@ -589,9 +494,9 @@ pytest-asyncio==0.25.2
 | **LLM Orchestration** | LangChain + LangGraph | 유연한 체인 구성 + 상태 기반 에이전트 |
 | **AI Model** | GPT-4o-mini | 비용 효율성 (GPT-4 대비 10배 저렴) |
 | **Vector DB** | ChromaDB | 로컬 개발 용이, 설치 간편 |
-| **Crawler** | Playwright | 동적 SPA 렌더링 지원 |
+| **Data Source** | AI Hub | 250K+ 이커머스 리뷰 공개 데이터셋 |
 | **Frontend** | Streamlit | 빠른 MVP 개발 |
-| **Deployment** | Docker + EC2 | 비용 최소화 (Free Tier) |
+| **Deployment** | AWS EC2 | Free Tier로 비용 최소화 |
 
 ---
 
