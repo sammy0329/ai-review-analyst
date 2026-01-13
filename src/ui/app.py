@@ -364,11 +364,20 @@ def check_api_key():
 # 제품 로드
 # =============================================================================
 
+def get_data_dir() -> str:
+    """데이터 디렉토리 경로 반환 (병합 폴더 우선)."""
+    from pathlib import Path
+    merged_dir = Path("data/aihub_merged")
+    if merged_dir.exists():
+        return str(merged_dir)
+    return "data/aihub_data"
+
+
 def load_products(category: str):
     """제품 목록 로드."""
     with st.spinner("📦 제품 로드 중..."):
         try:
-            loader = AIHubDataLoader(data_dir="data/aihub_data")
+            loader = AIHubDataLoader(data_dir=get_data_dir())
 
             cat_filter = None if category == "전체" else category
 

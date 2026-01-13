@@ -147,27 +147,64 @@ class AIHubDataLoader:
 
         Args:
             data_dir: AI Hub 데이터 디렉토리 경로
-                      (Training/02.라벨링데이터, Validation/02.라벨링데이터 포함)
+                      - 기존 형식: Training/02.라벨링데이터, Validation/02.라벨링데이터 포함
+                      - 병합 형식: JSON 파일이 직접 포함된 폴더
         """
         self.data_dir = Path(data_dir)
+        self._is_merged_format = self._detect_format()
         self._validate_data_dir()
+
+    def _detect_format(self) -> bool:
+        """데이터 디렉토리 형식 감지.
+
+        Returns:
+            True면 병합 형식 (JSON 파일 직접 포함), False면 기존 형식
+        """
+        if not self.data_dir.exists():
+            return False
+
+        # Training/Validation 폴더가 있으면 기존 형식
+        has_training = (self.data_dir / "Training").exists()
+        has_validation = (self.data_dir / "Validation").exists()
+        if has_training or has_validation:
+            return False
+
+        # JSON 파일이 직접 있으면 병합 형식
+        json_files = list(self.data_dir.glob("*.json"))
+        if json_files:
+            return True
+
+        return False
 
     def _validate_data_dir(self) -> None:
         """데이터 디렉토리 유효성 검증."""
         if not self.data_dir.exists():
             raise FileNotFoundError(f"데이터 디렉토리가 존재하지 않습니다: {self.data_dir}")
 
-        # Training 또는 Validation 폴더 확인
-        has_training = (self.data_dir / "Training").exists()
-        has_validation = (self.data_dir / "Validation").exists()
+        if self._is_merged_format:
+            # 병합 형식: JSON 파일 존재 확인
+            json_files = list(self.data_dir.glob("*.json"))
+            if not json_files:
+                raise FileNotFoundError(
+                    f"JSON 파일이 없습니다: {self.data_dir}"
+                )
+        else:
+            # 기존 형식: Training 또는 Validation 폴더 확인
+            has_training = (self.data_dir / "Training").exists()
+            has_validation = (self.data_dir / "Validation").exists()
 
-        if not has_training and not has_validation:
-            raise FileNotFoundError(
-                f"Training 또는 Validation 폴더가 없습니다: {self.data_dir}"
-            )
+            if not has_training and not has_validation:
+                raise FileNotFoundError(
+                    f"Training 또는 Validation 폴더가 없습니다: {self.data_dir}"
+                )
 
     def _get_label_dirs(self, split: str = "all") -> list[Path]:
         """라벨링 데이터 디렉토리 목록 반환."""
+        if self._is_merged_format:
+            # 병합 형식: data_dir 자체가 라벨 디렉토리
+            return [self.data_dir]
+
+        # 기존 형식
         dirs = []
 
         if split in ("all", "training"):
@@ -212,6 +249,28 @@ class AIHubDataLoader:
 
         return reviews
 
+    def _extract_category_from_filename(self, filename: str) -> str | None:
+        """파일명에서 카테고리 추출.
+
+        파일명 형식 예: 1-1.여성의류(156).json
+        첫 번째 숫자가 카테고리 번호 (1=패션, 2=화장품, 3=가전, 4=IT기기, 5=생활용품)
+        """
+        # 파일명 앞자리 숫자 확인
+        filename_map = {
+            "1": "패션",
+            "2": "화장품",
+            "3": "가전",
+            "4": "IT기기",
+            "5": "생활용품",
+        }
+        if filename and filename[0] in filename_map:
+            return filename_map[filename[0]]
+        return None
+
+    def _extract_source_from_filename(self, filename: str) -> str:
+        """파일명에서 출처 추출."""
+        return "SNS" if "SNS" in filename else "쇼핑몰"
+
     def iter_reviews(
         self,
         split: str = "all",
@@ -223,7 +282,7 @@ class AIHubDataLoader:
         리뷰를 순회하며 반환.
 
         Args:
-            split: 데이터 분할 ("all", "training", "validation")
+            split: 데이터 분할 ("all", "training", "validation") - 병합 형식에서는 무시됨
             category: 카테고리 필터 ("패션", "화장품", "가전", "IT기기", "생활용품")
             source: 출처 필터 ("쇼핑몰", "SNS")
             limit: 최대 반환 개수
@@ -235,26 +294,23 @@ class AIHubDataLoader:
         label_dirs = self._get_label_dirs(split)
 
         for label_dir in label_dirs:
-            for folder in sorted(label_dir.iterdir()):
-                if not folder.is_dir():
-                    continue
+            if self._is_merged_format:
+                # 병합 형식: JSON 파일이 직접 폴더에 있음
+                for json_file in sorted(label_dir.glob("*.json")):
+                    filename = json_file.name
 
-                folder_name = folder.name
+                    # 카테고리 필터링
+                    if category:
+                        file_category = self._extract_category_from_filename(filename)
+                        if file_category != category:
+                            continue
 
-                # 카테고리 필터링
-                if category:
-                    folder_category = self._extract_category_from_folder(folder_name)
-                    if folder_category != category:
-                        continue
+                    # 출처 필터링
+                    if source:
+                        file_source = self._extract_source_from_filename(filename)
+                        if file_source != source:
+                            continue
 
-                # 출처 필터링
-                if source:
-                    folder_source = self._extract_source_from_folder(folder_name)
-                    if folder_source != source:
-                        continue
-
-                # JSON 파일 순회
-                for json_file in sorted(folder.glob("*.json")):
                     reviews = self.load_json_file(json_file)
 
                     for review in reviews:
@@ -263,6 +319,36 @@ class AIHubDataLoader:
 
                         if limit and count >= limit:
                             return
+            else:
+                # 기존 형식: 서브폴더 안에 JSON 파일
+                for folder in sorted(label_dir.iterdir()):
+                    if not folder.is_dir():
+                        continue
+
+                    folder_name = folder.name
+
+                    # 카테고리 필터링
+                    if category:
+                        folder_category = self._extract_category_from_folder(folder_name)
+                        if folder_category != category:
+                            continue
+
+                    # 출처 필터링
+                    if source:
+                        folder_source = self._extract_source_from_folder(folder_name)
+                        if folder_source != source:
+                            continue
+
+                    # JSON 파일 순회
+                    for json_file in sorted(folder.glob("*.json")):
+                        reviews = self.load_json_file(json_file)
+
+                        for review in reviews:
+                            yield review
+                            count += 1
+
+                            if limit and count >= limit:
+                                return
 
     def load_reviews(
         self,
@@ -298,15 +384,16 @@ class AIHubDataLoader:
             "by_category": {},
             "by_source": {"쇼핑몰": 0, "SNS": 0},
             "by_polarity": {"긍정": 0, "중립": 0, "부정": 0},
-            "by_split": {"training": 0, "validation": 0},
+            "by_split": {"training": 0, "validation": 0, "merged": 0},
         }
 
         polarity_map = {1: "긍정", 0: "중립", -1: "부정"}
 
-        for split in ["training", "validation"]:
-            for review in self.iter_reviews(split=split):
+        if self._is_merged_format:
+            # 병합 형식: split 구분 없이 전체 로드
+            for review in self.iter_reviews():
                 stats["total"] += 1
-                stats["by_split"][split] += 1
+                stats["by_split"]["merged"] += 1
 
                 # 카테고리별
                 domain = review.domain
@@ -321,6 +408,26 @@ class AIHubDataLoader:
                 # 감정별
                 polarity_label = polarity_map.get(review.general_polarity, "중립")
                 stats["by_polarity"][polarity_label] += 1
+        else:
+            # 기존 형식: split별로 통계
+            for split in ["training", "validation"]:
+                for review in self.iter_reviews(split=split):
+                    stats["total"] += 1
+                    stats["by_split"][split] += 1
+
+                    # 카테고리별
+                    domain = review.domain
+                    if domain not in stats["by_category"]:
+                        stats["by_category"][domain] = 0
+                    stats["by_category"][domain] += 1
+
+                    # 출처별
+                    if review.source in stats["by_source"]:
+                        stats["by_source"][review.source] += 1
+
+                    # 감정별
+                    polarity_label = polarity_map.get(review.general_polarity, "중립")
+                    stats["by_polarity"][polarity_label] += 1
 
         return stats
 
@@ -523,14 +630,23 @@ def main():
     """테스트 실행."""
     import sys
 
-    # 데이터 디렉토리 경로
-    data_dir = Path(__file__).parent.parent.parent / "data" / "aihub_data"
+    # 데이터 디렉토리 경로 (병합 폴더 우선, 없으면 원본 폴더)
+    base_dir = Path(__file__).parent.parent.parent / "data"
+    merged_dir = base_dir / "aihub_merged"
+    original_dir = base_dir / "aihub_data"
 
-    if not data_dir.exists():
-        print(f"데이터 디렉토리가 없습니다: {data_dir}")
+    if merged_dir.exists():
+        data_dir = merged_dir
+        print("병합 데이터 폴더 사용: aihub_merged\n")
+    elif original_dir.exists():
+        data_dir = original_dir
+        print("원본 데이터 폴더 사용: aihub_data\n")
+    else:
+        print(f"데이터 디렉토리가 없습니다: {base_dir}")
         sys.exit(1)
 
     loader = AIHubDataLoader(data_dir)
+    print(f"데이터 형식: {'병합' if loader._is_merged_format else '기존 (Training/Validation)'}\n")
 
     # 통계 출력
     print("=== AI Hub 데이터 통계 ===\n")
@@ -548,6 +664,13 @@ def main():
     print("\n감정별:")
     for pol, count in stats["by_polarity"].items():
         print(f"  {pol}: {count:,}개")
+
+    # 분할별 (기존 형식인 경우)
+    if not loader._is_merged_format:
+        print("\n분할별:")
+        for split, count in stats["by_split"].items():
+            if count > 0:
+                print(f"  {split}: {count:,}개")
 
     # 샘플 데이터 로드 테스트
     print("\n=== 샘플 리뷰 (5개) ===\n")
