@@ -26,11 +26,11 @@
 
 초저가/발견형 커머스 사용자들은 다음과 같은 **Pain Point**를 겪고 있습니다.
 
-| Problem | Description |
-|---------|-------------|
-| **Information Overload** | 인기 상품의 수천 개 리뷰를 일일이 읽기엔 시간이 부족함 |
-| **Trust Issues** | 광고성 리뷰와 진성 리뷰가 섞여 있어 품질을 확신하기 어려움 |
-| **Lack of Context** | 별점 4.5점이라도, "내 상황(예: 매운 걸 못 먹음)"에 맞는지 판단 불가 |
+| Problem                  | Description                                                         |
+| ------------------------ | ------------------------------------------------------------------- |
+| **Information Overload** | 인기 상품의 수천 개 리뷰를 일일이 읽기엔 시간이 부족함              |
+| **Trust Issues**         | 광고성 리뷰와 진성 리뷰가 섞여 있어 품질을 확신하기 어려움          |
+| **Lack of Context**      | 별점 4.5점이라도, "내 상황(예: 매운 걸 못 먹음)"에 맞는지 판단 불가 |
 
 ---
 
@@ -38,28 +38,28 @@
 
 **RAG(Retrieval-Augmented Generation)** 기술을 활용해 비정형 리뷰 데이터를 구조화하고, LLM이 '나만의 쇼핑 비서'처럼 행동합니다.
 
-| Feature | Description | Tech Key |
-|:--------|:------------|:---------|
-| **쇼핑몰 스타일 UI** | 제품 목록 → 제품 상세 → 리뷰 분석 흐름의 직관적 인터페이스 | `Streamlit`, `UX Design` |
-| **팩트 기반 요약** | 긍/부정 비율 시각화 및 키워드별 장단점(맛, 배송, 가성비) 분석 | `Prompt Engineering` |
-| **시맨틱 Q&A** | "이거 3살 아기가 먹어도 돼?" 같은 자연어 질문에 리뷰 근거로 답변 | `RAG`, `Vector DB` |
-| **비교 분석** | A상품(가성비) vs B상품(고품질) 중 내게 맞는 상품 추천 | `Multi-Agent`, `Reasoning` |
-| **속성 추출** | Raw 리뷰에서 가격/디자인/품질/배송 등 속성별 감정 자동 분석 | `LLM Prompting`, `Structured Output` |
-| **제품별 RAG Q&A** | 선택한 제품의 리뷰만을 기반으로 질문에 답변 | `Scoped RAG`, `Context Filtering` |
-| **할루시네이션 방지** | 답변 생성 시 참고한 실제 리뷰 원문(출처) 표기 | `Source Citation` |
+| Feature               | Description                                                      | Tech Key                             |
+| :-------------------- | :--------------------------------------------------------------- | :----------------------------------- |
+| **쇼핑몰 스타일 UI**  | 제품 목록 → 제품 상세 → 리뷰 분석 흐름의 직관적 인터페이스       | `Streamlit`, `UX Design`             |
+| **팩트 기반 요약**    | 긍/부정 비율 시각화 및 키워드별 장단점(맛, 배송, 가성비) 분석    | `Prompt Engineering`                 |
+| **시맨틱 Q&A**        | "이거 3살 아기가 먹어도 돼?" 같은 자연어 질문에 리뷰 근거로 답변 | `RAG`, `Vector DB`                   |
+| **비교 분석**         | A상품(가성비) vs B상품(고품질) 중 내게 맞는 상품 추천            | `Multi-Agent`, `Reasoning`           |
+| **속성 추출**         | Raw 리뷰에서 가격/디자인/품질/배송 등 속성별 감정 자동 분석      | `LLM Prompting`, `Structured Output` |
+| **제품별 RAG Q&A**    | 선택한 제품의 리뷰만을 기반으로 질문에 답변                      | `Scoped RAG`, `Context Filtering`    |
+| **할루시네이션 방지** | 답변 생성 시 참고한 실제 리뷰 원문(출처) 표기                    | `Source Citation`                    |
 
 ---
 
 ## Tech Stack
 
-| Category | Technology |
-|----------|------------|
-| **Core Logic** | Python, LangChain (Orchestration), LangGraph (Flow Control) |
-| **AI Model** | OpenAI GPT-4o-mini (Cost-effective reasoning) |
-| **Database** | ChromaDB (Vector Store for semantic search) |
-| **Data Pipeline** | Playwright (Dynamic crawling), BeautifulSoup |
-| **UI/UX** | Streamlit (Rapid MVP prototyping) |
-| **Deployment** | Docker, AWS EC2 |
+| Category          | Technology                                                  |
+| ----------------- | ----------------------------------------------------------- |
+| **Core Logic**    | Python, LangChain (Orchestration), LangGraph (Flow Control) |
+| **AI Model**      | OpenAI GPT-4o-mini (Cost-effective reasoning)               |
+| **Database**      | ChromaDB (Vector Store for semantic search)                 |
+| **Data Pipeline** | Playwright (Dynamic crawling), BeautifulSoup                |
+| **UI/UX**         | Streamlit (Rapid MVP prototyping)                           |
+| **Deployment**    | Docker, AWS EC2                                             |
 
 ---
 
@@ -105,11 +105,11 @@
 
 ### Data Source
 
-| Source | Reviews | Category | Status |
-|--------|---------|----------|--------|
-| **AI Hub 속성기반 감정분석** | 250,312 | 패션/화장품/가전/IT/생활용품 | ✅ 활용 중 |
-| Coupang Crawler | - | - | ⚠️ 봇 탐지로 제한 |
-| 11st/Naver Crawler | - | - | ⚠️ 봇 탐지로 제한 |
+| Source                       | Reviews | Category                     | Status            |
+| ---------------------------- | ------- | ---------------------------- | ----------------- |
+| **AI Hub 속성기반 감정분석** | 250,312 | 패션/화장품/가전/IT/생활용품 | ✅ 활용 중        |
+| Coupang Crawler              | -       | -                            | ⚠️ 봇 탐지로 제한 |
+| 11st/Naver Crawler           | -       | -                            | ⚠️ 봇 탐지로 제한 |
 
 > **Note:** 주요 이커머스 플랫폼의 봇 탐지 시스템으로 인해 [AI Hub 속성기반 감정분석 데이터](https://aihub.or.kr/aihubdata/data/view.do?dataSetSn=71603)를 활용하여 RAG 파이프라인 및 에이전트 시스템을 개발합니다.
 
@@ -213,6 +213,7 @@ streamlit run app.py
 ## Key Features Demo
 
 ### 1. Product Explorer (쇼핑몰 스타일 UI)
+
 ```
 [제품 목록 화면]
 ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
@@ -230,6 +231,7 @@ streamlit run app.py
 ```
 
 ### 2. Fact-based Summarization
+
 ```
 Input: 상품 URL 입력
 Output:
@@ -239,6 +241,7 @@ Output:
 ```
 
 ### 3. Semantic Q&A (제품별 RAG)
+
 ```
 [특정 제품 상세 페이지에서]
 User: "이거 3살 아기가 먹어도 괜찮아?"
@@ -250,6 +253,7 @@ Agent: "12개의 리뷰에서 '아이', '유아' 관련 언급을 찾았습니�
 ```
 
 ### 4. Product Comparison
+
 ```
 Input: 상품A URL, 상품B URL
 Output:
@@ -259,6 +263,7 @@ Output:
 ```
 
 ### 5. Aspect Extraction (속성 추출)
+
 ```
 Input: "가격은 좀 비싸지만 소재가 정말 좋아요. 배송도 빨랐습니다."
 Output:
@@ -275,30 +280,35 @@ Output:
 ## Development Roadmap
 
 ### Phase 1: Foundation (100% 완료)
+
 - [x] Project setup & documentation
 - [x] Playwright crawler implementation (봇 탐지로 제한적)
 - [x] AI Hub 공개 데이터셋 통합 (225K+ 이커머스 리뷰)
 - [x] Data preprocessing pipeline
 
 ### Phase 2: Core RAG (100% 완료)
+
 - [x] ChromaDB integration & embedding pipeline
 - [x] LangChain RAG chain
 - [x] Prompt engineering (Q&A, 요약, 비교, 감성분석)
 - [x] LLM 기반 속성 추출 시스템 (27개 테스트 통과)
 
 ### Phase 3: Agent System (100% 완료)
+
 - [x] LangGraph 기반 멀티 에이전트 아키텍처
 - [x] Intent Classifier (의도 분류: QA/요약/비교)
 - [x] Q&A Agent, Summarize Agent, Compare Agent
 - [x] 가짜 리뷰 필터링 시스템
 
 ### Phase 4: Dashboard & UI (100% 완료)
+
 - [x] 기본 Streamlit 대시보드
 - [x] 쇼핑몰 스타일 UI 개편 (제품 목록 → 상세 → Q&A)
 - [x] 제품별 RAG Q&A 기능
 - [x] 카테고리 대분류/소분류 계층 필터
 
 ### Phase 5: Deployment (100% 완료)
+
 - [x] Docker 컨테이너화
 - [x] AWS EC2 배포
 - [x] 테스트 커버리지 44% 달성 (256개 테스트)
@@ -311,15 +321,15 @@ Output:
 
 ### Demonstrated Skills
 
-| Skill | Implementation |
-|-------|----------------|
-| **LLM/RAG** | LangChain + ChromaDB 기반 검색 증강 생성 |
-| **Agent Development** | LangGraph를 활용한 멀티 에이전트 시스템 |
-| **Prompt Engineering** | 팩트 기반 요약 및 출처 명시 프롬프트 설계 |
-| **Web Crawling** | Playwright + Stealth 기반 동적 페이지 크롤링 |
-| **Data Pipeline** | HuggingFace 데이터셋 통합 및 벡터 임베딩 |
-| **Problem Solving** | 크롤링 한계 → 공개 데이터셋 활용 전략 수립 |
-| **Rapid Prototyping** | Streamlit MVP 개발 |
+| Skill                  | Implementation                               |
+| ---------------------- | -------------------------------------------- |
+| **LLM/RAG**            | LangChain + ChromaDB 기반 검색 증강 생성     |
+| **Agent Development**  | LangGraph를 활용한 멀티 에이전트 시스템      |
+| **Prompt Engineering** | 팩트 기반 요약 및 출처 명시 프롬프트 설계    |
+| **Web Crawling**       | Playwright + Stealth 기반 동적 페이지 크롤링 |
+| **Data Pipeline**      | HuggingFace 데이터셋 통합 및 벡터 임베딩     |
+| **Problem Solving**    | 크롤링 한계 → 공개 데이터셋 활용 전략 수립   |
+| **Rapid Prototyping**  | Streamlit MVP 개발                           |
 
 ---
 
@@ -337,11 +347,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## Contact
-
-- **GitHub:** [@yourusername](https://github.com/yourusername)
-- **Email:** your.email@example.com
-
----
-
-*Built with passion for AI-powered problem solving*
+_Built with passion for AI-powered problem solving_
