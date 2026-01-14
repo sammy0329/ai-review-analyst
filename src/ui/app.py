@@ -934,24 +934,23 @@ def render_product_detail_content(product: Product):
                                 keywords = [w for w in re.findall(r'[가-힣]+', question) if len(w) >= 2 and w not in stopwords]
 
                                 def highlight_sentences(text: str, keywords: list) -> str:
-                                    """키워드가 포함된 문장 전체를 하이라이트."""
+                                    """키워드가 포함된 부분을 하이라이트."""
                                     if not keywords:
                                         return text
-                                    # 문장 분리 (마침표, 느낌표, 물음표, 또는 ~요/~다/~네요 등)
-                                    sentences = re.split(r'(?<=[.!?요다네])\s*', text)
-                                    highlighted_parts = []
-                                    for sentence in sentences:
-                                        if not sentence.strip():
+                                    # 키워드 주변 문맥을 하이라이트 (키워드 앞뒤로 적절히 잘라서)
+                                    result = text
+                                    for kw in keywords:
+                                        if kw not in result:
                                             continue
-                                        # 키워드 포함 여부 확인
-                                        has_keyword = any(kw in sentence for kw in keywords)
-                                        if has_keyword:
-                                            highlighted_parts.append(
-                                                f'<mark style="background-color: #fff3cd; padding: 2px 4px; border-radius: 4px;">{sentence}</mark>'
-                                            )
-                                        else:
-                                            highlighted_parts.append(sentence)
-                                    return ' '.join(highlighted_parts)
+                                        # 키워드가 포함된 절/구 찾기 (앞뒤 공백이나 구두점까지)
+                                        # 패턴: 키워드 앞 10자 + 키워드 + 키워드 뒤 20자 (구두점이나 끝까지)
+                                        pattern = f'([^.!?]*{re.escape(kw)}[^.!?]*[.!?]?)'
+                                        matches = re.findall(pattern, result)
+                                        for match in matches:
+                                            if match.strip():
+                                                highlighted = f'<mark style="background-color: #fff3cd; padding: 2px 4px; border-radius: 4px;">{match.strip()}</mark>'
+                                                result = result.replace(match, highlighted, 1)
+                                    return result
 
                                 # 감정/속성 색상 매핑
                                 sentiment_colors = {"긍정": "#1565c0", "부정": "#c62828", "중립": "#2e7d32"}
