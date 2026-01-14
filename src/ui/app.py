@@ -31,7 +31,7 @@ from src.database import (
     get_product_by_name, get_all_products as db_get_products,
     get_review_count,
 )
-from src.pipeline.aihub_loader import AIHubDataLoader, Product
+from src.pipeline.aihub_loader import AIHubDataLoader, Product, AIHubReview
 from src.pipeline.aspect_extractor import create_aspect_extractor
 from src.pipeline.preprocessor import create_default_preprocessor
 from src.pipeline.embedder import create_embedder
@@ -837,6 +837,31 @@ def render_product_detail():
     if not product:
         st.warning("선택된 제품이 없습니다.")
         return
+
+    # 리뷰가 로드되지 않았으면 DB에서 로드
+    if not product.reviews:
+        db_reviews = get_reviews_by_product(product.name)
+        for r in db_reviews:
+            # sentiment → general_polarity 변환
+            polarity_map = {"긍정": 1, "중립": 0, "부정": -1}
+            polarity = polarity_map.get(r["sentiment"], 0)
+
+            # rating → review_score 변환 (5점 → 100점)
+            score = int((r["rating"] or 3) * 20)
+
+            review = AIHubReview(
+                index=str(r["id"]),
+                raw_text=r["text"],
+                source="쇼핑몰",
+                domain=product.main_category,
+                main_category=product.category,
+                product_name=product.name,
+                review_score=score,
+                general_polarity=polarity,
+                aspects=r["aspects"] or [],
+                date=r["created_at"],
+            )
+            product.reviews.append(review)
 
     # 상단 네비게이션
     col_back, col_title = st.columns([1, 5])
