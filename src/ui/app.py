@@ -667,7 +667,7 @@ def render_product_list():
     with col_sort:
         sort_option = st.selectbox(
             "정렬",
-            ["리뷰 많은순", "평점 높은순", "평점 낮은순"],
+            ["리뷰 많은순", "리뷰 적은순", "평점 높은순", "평점 낮은순"],
         )
 
     # 카테고리 상태 초기화
@@ -704,6 +704,8 @@ def render_product_list():
     # 정렬
     if sort_option == "리뷰 많은순":
         filtered_products.sort(key=lambda p: p.review_count, reverse=True)
+    elif sort_option == "리뷰 적은순":
+        filtered_products.sort(key=lambda p: p.review_count)
     elif sort_option == "평점 높은순":
         filtered_products.sort(key=lambda p: p.avg_rating, reverse=True)
     elif sort_option == "평점 낮은순":
