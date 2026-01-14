@@ -1296,9 +1296,13 @@ def render_product_detail_content(product: Product):
                         reasons = [reason_map.get(r.value, r.value) for r in trust_result.reasons]
                         warning_html = f'<div style="background-color: #FFF3E0; padding: 8px 12px; border-radius: 5px; margin-bottom: 10px; color: #E65100;">⚠️ 의심 사유: {", ".join(reasons)}</div>'
 
-                    # 미리보기 (속성 텍스트 우선, 없으면 전체 텍스트)
+                    # 미리보기 (속성 텍스트에 하이라이트 적용)
                     preview_text = review_data["aspect_text"] if review_data["aspect_text"] else review_data["full_text"]
-                    preview = preview_text[:30] + "..." if len(preview_text) > 30 else preview_text
+                    preview_raw = preview_text[:50] + "..." if len(preview_text) > 50 else preview_text
+
+                    # 미리보기에 감정별 배경색 하이라이트 적용
+                    highlight_bg = {"긍정": "#e3f2fd", "중립": "#e8f5e9", "부정": "#ffebee"}.get(review_data["sentiment"], "#f5f5f5")
+                    preview = f'<span style="background-color: {highlight_bg}; padding: 2px 6px; border-radius: 4px;">{preview_raw}</span>'
 
                     # 속성 분석 HTML 생성
                     aspects_html = ""
