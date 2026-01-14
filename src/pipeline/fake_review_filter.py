@@ -438,3 +438,21 @@ def create_fake_review_filter(
         FakeReviewFilter 인스턴스
     """
     return FakeReviewFilter(use_llm=use_llm, llm_threshold=llm_threshold)
+
+
+def check_review_text(text: str, rating: int | None = None) -> FakeReviewResult:
+    """텍스트 기반 가짜 리뷰 검사 (규칙 기반만).
+
+    Review 객체 없이 텍스트와 평점만으로 검사할 때 사용.
+
+    Args:
+        text: 리뷰 텍스트
+        rating: 평점 (1-5, 없으면 None)
+
+    Returns:
+        FakeReviewResult 객체
+    """
+    filter_instance = FakeReviewFilter(use_llm=False)
+    result = filter_instance._rule_based_check(text, rating or 3)
+    result.weight = filter_instance._calculate_weight(result)
+    return result
