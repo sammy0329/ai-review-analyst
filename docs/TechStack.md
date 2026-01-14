@@ -113,7 +113,7 @@ from typing import TypedDict, Literal
 
 class AgentState(TypedDict):
     query: str
-    intent: Literal["summarize", "qa", "compare"]
+    intent: Literal["summarize", "qa"]
     response: str
 
 def router(state: AgentState) -> str:
@@ -121,17 +121,14 @@ def router(state: AgentState) -> str:
     intent = state["intent"]
     if intent == "summarize":
         return "summarize_agent"
-    elif intent == "qa":
-        return "qa_agent"
     else:
-        return "compare_agent"
+        return "qa_agent"
 
 # 그래프 구성
 workflow = StateGraph(AgentState)
 workflow.add_node("classifier", classify_intent)
 workflow.add_node("summarize_agent", summarize_reviews)
 workflow.add_node("qa_agent", answer_question)
-workflow.add_node("compare_agent", compare_products)
 
 workflow.add_conditional_edges("classifier", router)
 workflow.set_entry_point("classifier")
@@ -275,6 +272,37 @@ results = vectorstore.similarity_search(
     k=5  # 상위 5개 결과
 )
 ```
+
+---
+
+### SQLite
+
+| 항목 | 내용 |
+|------|------|
+| **역할** | 제품/리뷰 메타데이터 저장 |
+| **선택 이유** | 경량, 별도 서버 불필요, Python 내장 |
+| **저장 위치** | `data/reviews.db` |
+
+**프로젝트 내 활용:**
+```python
+from src.database import get_all_products, get_reviews_by_product
+
+# 제품 목록 조회
+products = get_all_products()
+
+# 제품별 리뷰 조회
+reviews = get_reviews_by_product("제품명")
+
+# 리뷰 날짜 임의화 (실제 서비스 느낌)
+from src.database import randomize_review_dates
+randomize_review_dates(start_days_ago=365)  # 최근 1년 내 임의 날짜
+```
+
+**테이블 구조:**
+| 테이블 | 컬럼 | 설명 |
+|--------|------|------|
+| products | id, name, category, avg_rating, review_count | 제품 정보 |
+| reviews | id, product_id, text, sentiment, aspects, rating, created_at | 리뷰 데이터 |
 
 ---
 
@@ -494,7 +522,7 @@ pytest-asyncio==0.25.2       # 비동기 테스트
 | **LLM Orchestration** | LangChain + LangGraph | 유연한 체인 구성 + 상태 기반 에이전트 |
 | **AI Model** | GPT-4o-mini | 비용 효율성 (GPT-4 대비 10배 저렴) |
 | **Vector DB** | ChromaDB | 로컬 개발 용이, 설치 간편 |
-| **Data Source** | AI Hub | 250K+ 이커머스 리뷰 공개 데이터셋 |
+| **Data Source** | AI Hub | 180K+ 이커머스 리뷰 공개 데이터셋 |
 | **Frontend** | Streamlit | 빠른 MVP 개발 |
 | **Deployment** | AWS EC2 | Free Tier로 비용 최소화 |
 
