@@ -881,36 +881,38 @@ def render_product_detail_content(product: Product):
                     # AI 답변
                     with st.chat_message("assistant"):
                         if chat['answer'] == "💭 답변 준비중...":
-                            # 로딩 애니메이션 표시
+                            # 로딩 애니메이션 표시 (세로 가운데 정렬)
                             st.markdown(
                                 """
                                 <style>
-                                @keyframes pulse {
-                                    0%, 100% { opacity: 1; }
-                                    50% { opacity: 0.4; }
-                                }
-                                .loading-text {
-                                    animation: pulse 1.5s ease-in-out infinite;
-                                    display: inline-flex;
+                                .loading-container {
+                                    display: flex;
                                     align-items: center;
-                                    gap: 8px;
+                                    min-height: 24px;
+                                    gap: 10px;
                                 }
-                                .spinner {
-                                    width: 16px;
-                                    height: 16px;
-                                    border: 2px solid #e0e0e0;
-                                    border-top: 2px solid #1565c0;
+                                .loading-spinner {
+                                    width: 18px;
+                                    height: 18px;
+                                    border: 2.5px solid #e0e0e0;
+                                    border-top: 2.5px solid #1565c0;
                                     border-radius: 50%;
-                                    animation: spin 1s linear infinite;
+                                    animation: spin 0.8s linear infinite;
+                                    flex-shrink: 0;
+                                }
+                                .loading-label {
+                                    color: #666;
+                                    font-size: 0.95em;
+                                    line-height: 1;
                                 }
                                 @keyframes spin {
                                     0% { transform: rotate(0deg); }
                                     100% { transform: rotate(360deg); }
                                 }
                                 </style>
-                                <div class="loading-text">
-                                    <div class="spinner"></div>
-                                    <span>리뷰 분석중...</span>
+                                <div class="loading-container">
+                                    <div class="loading-spinner"></div>
+                                    <span class="loading-label">리뷰 분석중...</span>
                                 </div>
                                 """,
                                 unsafe_allow_html=True
