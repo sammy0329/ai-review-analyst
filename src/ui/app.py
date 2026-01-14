@@ -2258,56 +2258,70 @@ def render_add_review(product: Product):
         unsafe_allow_html=True
     )
 
-    if st.button("✍️ 리뷰 작성", key=f"submit_review_{product.name}", use_container_width=True):
+    # 제출 상태 관리
+    submit_key = f"submitting_{safe_name}"
+    is_submitting = st.session_state.get(submit_key, False)
+
+    # 버튼 텍스트 및 상태
+    button_text = "⏳ 저장 중..." if is_submitting else "✍️ 리뷰 작성"
+
+    if st.button(button_text, key=f"submit_review_{product.name}", use_container_width=True, disabled=is_submitting):
         if len(review_text.strip()) < 10:
             st.warning("리뷰는 최소 10자 이상 작성해주세요.")
         elif review_text.strip():
-            with st.spinner("🤖 AI가 리뷰를 분석하고 있습니다..."):
-                try:
-                    # AspectExtractor로 분석
-                    extractor = create_aspect_extractor(use_cache=True)
-                    result = extractor.extract(review_text.strip())
-
-                    # 감정을 한글로 변환
-                    sentiment_map = {"positive": "긍정", "negative": "부정", "neutral": "중립"}
-                    sentiment_kr = sentiment_map.get(result.overall_sentiment.value, "중립")
-
-                    # 제품 ID 조회
-                    product_id = get_or_create_product(
-                        name=product.name,
-                        category=product.category,
-                        main_category=product.main_category
-                    )
-
-                    # DB에 저장
-                    new_review_id = add_review(
-                        product_id=product_id,
-                        text=review_text.strip(),
-                        sentiment=sentiment_kr,
-                        aspects=result.aspects,
-                        rating=current_rating
-                    )
-
-                    # DB에서 최신 평균 별점 조회하여 Product 객체 업데이트
-                    db_product = get_product_by_name(product.name)
-                    if db_product:
-                        product.avg_rating = db_product.avg_rating
-                        product.review_count = db_product.review_count
-
-                    # 텍스트 초기화 플래그 설정
-                    st.session_state[clear_flag_key] = True
-
-                    # 새 리뷰 추가 플래그 (자동 스크롤/열기용)
-                    st.session_state["new_review_added"] = product.name
-                    st.session_state["new_review_id"] = new_review_id
-
-                    st.success("✅ 리뷰가 저장되었습니다!")
-                    st.rerun()
-
-                except Exception as e:
-                    show_error(e, "리뷰 분석")
+            # 제출 시작
+            st.session_state[submit_key] = True
+            st.rerun()
         else:
             st.warning("리뷰 내용을 입력해주세요.")
+
+    # 제출 처리 (버튼 클릭 후 rerun 시 실행)
+    if is_submitting and review_text.strip():
+        try:
+            # AspectExtractor로 분석
+            extractor = create_aspect_extractor(use_cache=True)
+            result = extractor.extract(review_text.strip())
+
+            # 감정을 한글로 변환
+            sentiment_map = {"positive": "긍정", "negative": "부정", "neutral": "중립"}
+            sentiment_kr = sentiment_map.get(result.overall_sentiment.value, "중립")
+
+            # 제품 ID 조회
+            product_id = get_or_create_product(
+                name=product.name,
+                category=product.category,
+                main_category=product.main_category
+            )
+
+            # DB에 저장
+            new_review_id = add_review(
+                product_id=product_id,
+                text=review_text.strip(),
+                sentiment=sentiment_kr,
+                aspects=result.aspects,
+                rating=current_rating
+            )
+
+            # DB에서 최신 평균 별점 조회하여 Product 객체 업데이트
+            db_product = get_product_by_name(product.name)
+            if db_product:
+                product.avg_rating = db_product.avg_rating
+                product.review_count = db_product.review_count
+
+            # 상태 초기화
+            st.session_state[submit_key] = False
+            st.session_state[clear_flag_key] = True
+
+            # 새 리뷰 추가 플래그 (자동 스크롤/열기용)
+            st.session_state["new_review_added"] = product.name
+            st.session_state["new_review_id"] = new_review_id
+
+            st.success("✅ 리뷰가 저장되었습니다!")
+            st.rerun()
+
+        except Exception as e:
+            st.session_state[submit_key] = False
+            show_error(e, "리뷰 분석")
 
 # =============================================================================
 # 메인 실행
