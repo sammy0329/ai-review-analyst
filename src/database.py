@@ -516,3 +516,46 @@ def migrate_aihub_product(product) -> int:
         count += 1
 
     return count
+
+
+def randomize_review_dates(start_days_ago: int = 365) -> int:
+    """모든 리뷰의 created_at을 임의 날짜로 업데이트.
+
+    Args:
+        start_days_ago: 시작일 (오늘 기준 며칠 전, 기본 365일=1년)
+
+    Returns:
+        업데이트된 리뷰 수
+    """
+    import random
+    from datetime import datetime, timedelta
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # 현재 시간과 시작 시간 계산
+    now = datetime.now()
+    start_date = now - timedelta(days=start_days_ago)
+
+    # 모든 리뷰 ID 조회
+    cursor.execute("SELECT id FROM reviews")
+    review_ids = [row["id"] for row in cursor.fetchall()]
+
+    # 각 리뷰에 임의 날짜 설정
+    updated = 0
+    for review_id in review_ids:
+        # start_date ~ now 사이의 임의 시점
+        random_seconds = random.randint(0, int((now - start_date).total_seconds()))
+        random_date = start_date + timedelta(seconds=random_seconds)
+        random_date_str = random_date.strftime("%Y-%m-%d %H:%M:%S")
+
+        cursor.execute(
+            "UPDATE reviews SET created_at = ? WHERE id = ?",
+            (random_date_str, review_id)
+        )
+        updated += 1
+
+    conn.commit()
+    conn.close()
+
+    return updated
