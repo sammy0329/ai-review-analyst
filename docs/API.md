@@ -14,6 +14,7 @@ AI Review Analyst는 다음 핵심 모듈을 제공합니다:
 | `src.chains` | RAG Chain 구현 |
 | `src.pipeline` | 데이터 파이프라인 (임베딩, 전처리) |
 | `src.prompts` | 프롬프트 템플릿 |
+| `src.database` | SQLite 데이터베이스 관리 |
 
 ---
 
@@ -71,7 +72,6 @@ from enum import Enum
 class IntentType(str, Enum):
     QA = "qa"           # 질의응답
     SUMMARY = "summary" # 요약
-    COMPARE = "compare" # 비교
     UNKNOWN = "unknown" # 미분류
 ```
 
@@ -111,7 +111,7 @@ def create_review_agent_graph(
     리뷰 분석 에이전트 그래프 생성.
 
     그래프 구조:
-        START → Intent Classifier → Router → [QA|Summary|Compare] → END
+        START → Intent Classifier → Router → [QA|Summary] → END
 
     Args:
         rag_chain: ReviewRAGChain 인스턴스
@@ -152,20 +152,6 @@ result = agent.invoke(state)
 node = create_summarize_agent(rag_chain, top_k=10)
 ```
 
-#### CompareAgent
-비교 분석 에이전트입니다.
-
-```python
-from src.agents import CompareAgent, create_compare_agent
-
-# 클래스 사용
-agent = CompareAgent(rag_chain, llm)
-result = agent.invoke(state)
-
-# 노드 함수 생성
-node = create_compare_agent(rag_chain, llm)
-```
-
 ### 1.7 Intent Classifier
 
 의도 분류기입니다. 규칙 기반 + LLM 하이브리드 방식을 사용합니다.
@@ -184,7 +170,6 @@ print(result.method)      # "rule_based"
 | 의도 | 키워드 |
 |------|--------|
 | SUMMARY | 요약, 정리, 종합, 전체적, 총평 |
-| COMPARE | 비교, vs, 차이, 대비, 어떤게 |
 
 ---
 
@@ -324,7 +309,7 @@ def set_prompt(self, prompt_name: str) -> None:
     프롬프트 템플릿 변경.
 
     Args:
-        prompt_name: "qa", "summary", "compare", "sentiment"
+        prompt_name: "qa", "summary", "sentiment"
     """
 ```
 
@@ -422,7 +407,6 @@ stats = loader.get_statistics()
 |------|------|
 | `qa` | 질의응답 |
 | `summary` | 리뷰 요약 |
-| `compare` | 제품 비교 |
 | `sentiment` | 감성 분석 |
 
 ### 4.2 get_prompt()
@@ -476,7 +460,6 @@ graph = create_review_agent_graph(rag_chain)
 queries = [
     ("이 제품 리뷰 요약해줘", None),           # SUMMARY
     ("배송은 빠른가요?", None),                 # QA
-    ("장단점 비교해줘", None),                  # COMPARE
 ]
 
 for query, product_name in queries:
@@ -513,7 +496,173 @@ st.write_stream(stream_response("이 제품 추천하시나요?"))
 
 ---
 
-## 7. 에러 처리
+## 7. Database 모듈
+
+SQLite 기반 리뷰 데이터 저장 및 조회를 위한 모듈입니다.
+
+### 7.1 Quick Start
+
+```python
+from src.database import (
+    get_products,
+    get_reviews_by_product,
+    search_products,
+    get_representative_reviews,
+)
+
+# 전체 제품 목록 조회
+products = get_products()
+
+# 특정 제품 리뷰 조회
+reviews = get_reviews_by_product(product_id=1)
+
+# 제품 검색
+results = search_products(query="운동화")
+
+# 대표 리뷰 조회
+rep_reviews = get_representative_reviews(product_id=1, limit=3)
+```
+
+### 7.2 주요 함수
+
+#### get_connection()
+```python
+def get_connection() -> sqlite3.Connection:
+    """
+    SQLite 데이터베이스 연결 반환.
+
+    Returns:
+        sqlite3.Connection 객체
+    """
+```
+
+#### get_products()
+```python
+def get_products(
+    category: str | None = None,
+    subcategory: str | None = None,
+) -> list[dict]:
+    """
+    제품 목록 조회.
+
+    Args:
+        category: 대분류 필터 (선택)
+        subcategory: 소분류 필터 (선택)
+
+    Returns:
+        제품 정보 딕셔너리 리스트
+        [{"id": 1, "name": "...", "category": "...", ...}]
+    """
+```
+
+#### get_reviews_by_product()
+```python
+def get_reviews_by_product(
+    product_id: int,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict]:
+    """
+    특정 제품의 리뷰 조회.
+
+    Args:
+        product_id: 제품 ID
+        limit: 최대 조회 수 (선택)
+        offset: 시작 위치 (기본: 0)
+
+    Returns:
+        리뷰 정보 딕셔너리 리스트
+    """
+```
+
+#### search_products()
+```python
+def search_products(
+    query: str,
+    category: str | None = None,
+) -> list[dict]:
+    """
+    제품명으로 검색.
+
+    Args:
+        query: 검색어
+        category: 카테고리 필터 (선택)
+
+    Returns:
+        매칭된 제품 리스트
+    """
+```
+
+#### get_representative_reviews()
+```python
+def get_representative_reviews(
+    product_id: int,
+    limit: int = 3,
+) -> list[dict]:
+    """
+    제품의 대표 리뷰 조회.
+
+    가중치 기반 선정:
+    - 텍스트 길이 (100~500자 선호)
+    - 감정 다양성 (긍정/중립/부정 균형)
+    - 유용성 점수
+
+    Args:
+        product_id: 제품 ID
+        limit: 반환할 리뷰 수 (기본: 3)
+
+    Returns:
+        대표 리뷰 리스트
+    """
+```
+
+#### randomize_review_dates()
+```python
+def randomize_review_dates(start_days_ago: int = 365) -> int:
+    """
+    모든 리뷰의 created_at을 임의 날짜로 업데이트.
+
+    Args:
+        start_days_ago: 시작 날짜 (현재로부터 몇 일 전, 기본: 365)
+
+    Returns:
+        업데이트된 리뷰 수
+
+    Example:
+        # 최근 1년 내 임의 날짜로 설정
+        updated = randomize_review_dates(365)
+        print(f"{updated}개 리뷰 날짜 업데이트됨")
+    """
+```
+
+### 7.3 데이터베이스 스키마
+
+```sql
+-- products 테이블
+CREATE TABLE products (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    category TEXT,
+    subcategory TEXT,
+    avg_rating REAL,
+    review_count INTEGER
+);
+
+-- reviews 테이블
+CREATE TABLE reviews (
+    id INTEGER PRIMARY KEY,
+    product_id INTEGER REFERENCES products(id),
+    text TEXT NOT NULL,
+    rating REAL,
+    sentiment TEXT,
+    created_at TEXT,
+    is_suspicious INTEGER DEFAULT 0
+);
+```
+
+---
+
+## 8. 에러 처리
 
 모든 에이전트는 에러 발생 시 `AgentState`의 `error` 필드에 에러 메시지를 설정합니다.
 
