@@ -4,6 +4,7 @@
 LangGraph 기반 멀티 에이전트 시스템 테스트입니다.
 """
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -594,7 +595,10 @@ class TestAgentIntegration:
     CI/CD에서는 skip될 수 있습니다.
     """
 
-    @pytest.mark.skip(reason="OpenAI API 필요")
+    @pytest.mark.skipif(
+        not os.getenv("OPENAI_API_KEY"),
+        reason="OPENAI_API_KEY 환경변수 필요"
+    )
     def test_full_graph_qa(self):
         """전체 그래프 Q&A 테스트."""
         from src.agents import create_initial_state, create_review_agent_graph
@@ -617,7 +621,10 @@ class TestAgentIntegration:
         assert result["intent"] == IntentType.QA
         assert len(result["response"]) > 0
 
-    @pytest.mark.skip(reason="OpenAI API 필요")
+    @pytest.mark.skipif(
+        not os.getenv("OPENAI_API_KEY"),
+        reason="OPENAI_API_KEY 환경변수 필요"
+    )
     def test_full_graph_summary(self):
         """전체 그래프 요약 테스트."""
         from src.agents import create_initial_state, create_review_agent_graph

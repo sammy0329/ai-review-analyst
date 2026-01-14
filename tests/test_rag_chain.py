@@ -330,24 +330,3 @@ class TestDocumentFormatting:
         # _build_chain 내부의 format_docs 함수 테스트
         # Chain이 정상적으로 구성되었는지 확인
         assert chain._chain is not None
-
-
-# API 키가 필요한 통합 테스트 (스킵 가능)
-@pytest.mark.skipif(
-    True,  # 기본적으로 스킵 (실제 API 테스트는 별도로)
-    reason="실제 API 호출이 필요한 테스트",
-)
-class TestRAGChainIntegration:
-    """RAG Chain 통합 테스트 (API 키 필요)."""
-
-    def test_full_query_flow(self):
-        """전체 질의 흐름 테스트."""
-        pass
-
-    def test_streaming_response(self):
-        """스트리밍 응답 테스트."""
-        pass
-
-    def test_async_streaming(self):
-        """비동기 스트리밍 테스트."""
-        pass
