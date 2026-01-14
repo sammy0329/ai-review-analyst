@@ -489,12 +489,6 @@ def init_session_state():
     if "product_aspects" not in st.session_state:
         st.session_state.product_aspects = {}
 
-    # 사용자 리뷰 저장소
-    # 비교할 제품 목록 (최대 4개)
-    if "compare_products" not in st.session_state:
-        st.session_state.compare_products = []
-
-
 init_session_state()
 
 
@@ -608,8 +602,8 @@ def render_product_list():
 
     products = st.session_state.products
 
-    # 상단 필터 (대분류 + 소분류 + 검색 + 정렬 + 비교)
-    col_cat, col_subcat, col_search, col_sort, col_compare = st.columns([1, 1.2, 2, 1, 1])
+    # 상단 필터 (대분류 + 소분류 + 검색 + 정렬)
+    col_cat, col_subcat, col_search, col_sort = st.columns([1, 1.2, 2, 1])
 
     with col_cat:
         categories = ["전체", "패션", "화장품", "가전", "IT기기", "생활용품"]
@@ -647,18 +641,6 @@ def render_product_list():
             "정렬",
             ["리뷰 많은순", "평점 높은순", "평점 낮은순"],
         )
-
-    with col_compare:
-        # 빈 레이블로 높이 맞춤
-        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-        compare_count = len(st.session_state.compare_products)
-        if compare_count >= 2:
-            if st.button(f"📊 비교 ({compare_count})", use_container_width=True, type="primary"):
-                st.session_state.current_page = "compare"
-                st.rerun()
-        else:
-            if st.button(f"📊 비교 ({compare_count}/4)", use_container_width=True, disabled=True):
-                pass
 
     # 카테고리 상태 초기화
     if "last_category" not in st.session_state:
@@ -771,16 +753,13 @@ def render_product_card(product: Product):
     positive_ratio = sentiment_ratio["긍정"]
     avg_rating = product.avg_rating
 
-    # 감정에 따른 추천 상태
-    if positive_ratio >= 70:
-        sentiment_color = "🟢"
-        sentiment_text = "추천"
-    elif positive_ratio >= 50:
-        sentiment_color = "🟡"
-        sentiment_text = "보통"
+    # 상세 페이지와 동일한 verdict 로직
+    if avg_rating >= 4.0 and positive_ratio >= 60:
+        verdict = "👍 추천해요!"
+    elif avg_rating >= 3.5 or positive_ratio >= 50:
+        verdict = "🤔 괜찮아요"
     else:
-        sentiment_color = "🔴"
-        sentiment_text = "주의"
+        verdict = "⚠️ 신중히 고려하세요"
 
     # 제품 제목
     display_name = product.name[:28] + "..." if len(product.name) > 28 else product.name
@@ -792,8 +771,8 @@ def render_product_card(product: Product):
     # 평점 & 리뷰 수
     st.markdown(f"⭐ **{avg_rating:.1f}** · 📝 **{product.review_count}개**")
 
-    # 감정 상태
-    st.markdown(f"{sentiment_color} {sentiment_text} ({positive_ratio:.0f}% 긍정)")
+    # 추천 판단 (상세 페이지와 동일 형식)
+    st.markdown(verdict)
 
     # 주요 속성 태그
     aspects = product.top_aspects[:3] if product.top_aspects else []
@@ -2018,198 +1997,6 @@ def render_add_review(product: Product):
         else:
             st.warning("리뷰 내용을 입력해주세요.")
 
-
-
-# =============================================================================
-# 제품 비교 페이지
-# =============================================================================
-
-def render_compare_products():
-    """제품 비교 페이지 렌더링."""
-    from collections import Counter
-
-    products = st.session_state.compare_products
-
-    # 상단 네비게이션
-    col_back, col_clear, col_spacer = st.columns([1, 1, 4])
-    with col_back:
-        if st.button("← 목록으로", use_container_width=True):
-            st.session_state.current_page = "product_list"
-            st.rerun()
-    with col_clear:
-        if st.button("🗑️ 비교 초기화", use_container_width=True):
-            st.session_state.compare_products = []
-            st.session_state.current_page = "product_list"
-            st.rerun()
-
-    if len(products) < 2:
-        st.warning("비교하려면 최소 2개 제품을 선택하세요.")
-        return
-
-    st.title("📊 제품 비교")
-    st.markdown(f"**{len(products)}개 제품** 비교 분석")
-    st.markdown("---")
-
-    # 1. 제품 요약 비교 테이블
-    st.subheader("📋 제품 요약 비교")
-
-    # 테이블 헤더
-    cols = st.columns(len(products) + 1)
-    cols[0].markdown("**항목**")
-    for i, product in enumerate(products):
-        cols[i + 1].markdown(f"**{product.name[:15]}...**")
-
-    # 평점 - "⭐ 5.0" 형태로 통일
-    cols = st.columns(len(products) + 1)
-    cols[0].markdown("평점")
-    for i, product in enumerate(products):
-        cols[i + 1].markdown(f"**⭐ {product.avg_rating:.1f}**")
-
-    # 리뷰 수
-    cols = st.columns(len(products) + 1)
-    cols[0].markdown("📝 리뷰 수")
-    for i, product in enumerate(products):
-        cols[i + 1].markdown(f"**{product.review_count}개**")
-
-    # 긍정 비율
-    cols = st.columns(len(products) + 1)
-    cols[0].markdown("😊 긍정 비율")
-    for i, product in enumerate(products):
-        ratio = product.get_sentiment_ratio()
-        cols[i + 1].markdown(f"**{ratio['긍정']:.0f}%**")
-
-    # 부정 비율
-    cols = st.columns(len(products) + 1)
-    cols[0].markdown("😞 부정 비율")
-    for i, product in enumerate(products):
-        ratio = product.get_sentiment_ratio()
-        cols[i + 1].markdown(f"**{ratio['부정']:.0f}%**")
-
-    st.markdown("---")
-
-    # 2. 감정 분포 비교 차트
-    st.subheader("📈 감정 분포 비교")
-
-    chart_data = {}
-    for product in products:
-        ratio = product.get_sentiment_ratio()
-        short_name = product.name[:12] + "..." if len(product.name) > 12 else product.name
-        chart_data[short_name] = {
-            "긍정": ratio["긍정"],
-            "중립": ratio["중립"],
-            "부정": ratio["부정"],
-        }
-
-    # DataFrame으로 변환
-    import pandas as pd
-    df = pd.DataFrame(chart_data).T
-    st.bar_chart(df)
-
-    st.markdown("---")
-
-    # 3. 속성별 감정 비교
-    st.subheader("🏷️ 속성별 감정 비교")
-
-    # 모든 제품에서 언급된 속성 수집
-    all_aspects = set()
-    product_aspect_data = {}
-
-    for product in products:
-        aspect_counter: Counter = Counter()
-        aspect_sentiment: dict = {}
-
-        for review in product.reviews:
-            for aspect in review.aspects:
-                aspect_name = aspect.get("Aspect", "")
-                if aspect_name:
-                    all_aspects.add(aspect_name)
-                    aspect_counter[aspect_name] += 1
-
-                    # 감정별 집계 (AI Hub 데이터는 문자열로 저장)
-                    polarity = int(aspect.get("SentimentPolarity", 0))
-                    if aspect_name not in aspect_sentiment:
-                        aspect_sentiment[aspect_name] = {"긍정": 0, "중립": 0, "부정": 0}
-
-                    if polarity == 1:
-                        aspect_sentiment[aspect_name]["긍정"] += 1
-                    elif polarity == -1:
-                        aspect_sentiment[aspect_name]["부정"] += 1
-                    else:
-                        aspect_sentiment[aspect_name]["중립"] += 1
-
-        product_aspect_data[product.name] = {
-            "counter": aspect_counter,
-            "sentiment": aspect_sentiment,
-        }
-
-    # 상위 속성만 표시 (전체에서 가장 많이 언급된 순)
-    total_counter: Counter = Counter()
-    for product in products:
-        for review in product.reviews:
-            for aspect in review.aspects:
-                aspect_name = aspect.get("Aspect", "")
-                if aspect_name:
-                    total_counter[aspect_name] += 1
-
-    top_aspects = [a for a, _ in total_counter.most_common(8)]
-
-    if top_aspects:
-        # 속성별 비교 테이블
-        for aspect_name in top_aspects:
-            st.markdown(f"#### 🏷️ {aspect_name}")
-
-            cols = st.columns(len(products))
-            for i, product in enumerate(products):
-                with cols[i]:
-                    data = product_aspect_data.get(product.name, {})
-                    sentiment = data.get("sentiment", {}).get(aspect_name, {"긍정": 0, "중립": 0, "부정": 0})
-                    total = sum(sentiment.values())
-
-                    if total > 0:
-                        pos_pct = sentiment["긍정"] / total * 100
-                        neg_pct = sentiment["부정"] / total * 100
-
-                        st.markdown(f"**{product.name[:10]}...**")
-                        st.markdown(f"언급 {total}회")
-
-                        # 감정 막대
-                        if pos_pct >= 60:
-                            st.success(f"😊 긍정 {pos_pct:.0f}%")
-                        elif neg_pct >= 40:
-                            st.error(f"😞 부정 {neg_pct:.0f}%")
-                        else:
-                            st.info(f"😐 혼재 (긍정 {pos_pct:.0f}%)")
-                    else:
-                        st.markdown(f"**{product.name[:10]}...**")
-                        st.caption("언급 없음")
-
-            st.markdown("---")
-    else:
-        st.info("속성 정보가 없습니다.")
-
-    # 4. 추천 인사이트
-    st.subheader("💡 비교 인사이트")
-
-    # 최고 평점 제품
-    best_rating = max(products, key=lambda p: p.avg_rating)
-    st.success(f"**최고 평점:** {best_rating.name[:30]}... (⭐ {best_rating.avg_rating:.1f})")
-
-    # 가장 긍정적인 제품
-    best_positive = max(products, key=lambda p: p.get_sentiment_ratio()["긍정"])
-    pos_ratio = best_positive.get_sentiment_ratio()["긍정"]
-    st.success(f"😊 **가장 긍정적:** {best_positive.name[:30]}... ({pos_ratio:.0f}% 긍정)")
-
-    # 가장 리뷰 많은 제품
-    most_reviews = max(products, key=lambda p: p.review_count)
-    st.info(f"📝 **리뷰 가장 많음:** {most_reviews.name[:30]}... ({most_reviews.review_count}개)")
-
-    # 주의 필요 제품 (부정 비율 높은 경우)
-    for product in products:
-        ratio = product.get_sentiment_ratio()
-        if ratio["부정"] >= 40:
-            st.warning(f"⚠️ **주의 필요:** {product.name[:30]}... (부정 {ratio['부정']:.0f}%)")
-
-
 # =============================================================================
 # 메인 실행
 # =============================================================================
@@ -2234,8 +2021,6 @@ def main():
         render_product_list()
     elif st.session_state.current_page == "product_detail":
         render_product_detail()
-    elif st.session_state.current_page == "compare":
-        render_compare_products()
 
 
 if __name__ == "__main__":
