@@ -850,78 +850,133 @@ def render_product_detail_content(product: Product):
 
     st.markdown("---")
 
-    # 간단 Q&A (fragment로 분리하여 독립적 업데이트)
-    st.subheader("💡 궁금한 점이 있으신가요?")
-    st.caption("리뷰를 기반으로 AI가 답변해드려요")
+    # 카카오톡 스타일 Q&A 채팅
+    st.subheader("💬 AI에게 물어보세요")
+    st.caption("💡 세션이 종료되면 대화 내용이 사라져요!")
 
     @st.fragment
     def render_qa_fragment():
-        """Q&A 섹션 - fragment로 분리하여 아래 섹션에 영향 없이 업데이트."""
+        """Q&A 섹션 - 카카오톡 스타일 채팅 인터페이스."""
+        # 대화 기록 초기화 (제품별, 세션별로 독립)
+        chat_key = f"chat_history_{product.name}"
+        pending_key = f"pending_answer_{product.name}"
+
+        if chat_key not in st.session_state:
+            st.session_state[chat_key] = []
+
+        chat_history = st.session_state.get(chat_key, [])
+
+        # 채팅 영역 (고정 높이, 스크롤 가능)
+        chat_container = st.container(height=300)
+
+        with chat_container:
+            if not chat_history:
+                st.info("💬 리뷰에 대해 궁금한 점을 물어보세요!")
+            else:
+                for chat in chat_history:
+                    # 사용자 질문
+                    with st.chat_message("user"):
+                        st.write(chat['question'])
+
+                    # AI 답변
+                    with st.chat_message("assistant"):
+                        st.write(chat['answer'])
+
+                        # 근거 리뷰 토글
+                        sources = chat.get("sources", [])
+                        if sources and chat['answer'] != "💭 답변 준비중...":
+                            with st.popover(f"📚 근거 리뷰 ({len(sources)}개)"):
+                                for idx, src in enumerate(sources[:5]):
+                                    # Document 객체 또는 dict 처리
+                                    if hasattr(src, 'page_content'):
+                                        content = src.page_content
+                                    elif isinstance(src, dict):
+                                        # text 키 우선 (RAG chain 반환 형식)
+                                        content = src.get("text", src.get("page_content", src.get("content", "")))
+                                    else:
+                                        content = str(src)
+
+                                    if content:
+                                        st.caption(f"{idx+1}. {content[:150]}...")
+
         # 자주 묻는 질문 버튼
         faq_col1, faq_col2, faq_col3 = st.columns(3)
-
         with faq_col1:
-            if st.button("📦 배송은 어때요?", use_container_width=True, key="faq_delivery"):
+            if st.button("📦 배송", use_container_width=True, key="faq_delivery"):
                 st.session_state.b2c_question = "배송은 어떤가요? 빠른 편인가요?"
-
         with faq_col2:
-            if st.button("💰 가성비 좋아요?", use_container_width=True, key="faq_value"):
+            if st.button("💰 가성비", use_container_width=True, key="faq_value"):
                 st.session_state.b2c_question = "가성비가 좋은 제품인가요?"
-
         with faq_col3:
-            if st.button("⚠️ 단점은 뭐예요?", use_container_width=True, key="faq_cons"):
+            if st.button("⚠️ 단점", use_container_width=True, key="faq_cons"):
                 st.session_state.b2c_question = "이 제품의 주요 단점이 뭔가요?"
 
-        # 직접 질문 입력
-        user_question = st.text_input(
-            "직접 질문하기",
-            placeholder="예: 사이즈가 작은 편인가요?",
-            key="b2c_user_question"
-        )
+        # 질문 입력 (하단)
+        input_col, btn_col = st.columns([5, 1])
+        with input_col:
+            user_question = st.text_input(
+                "질문",
+                placeholder="궁금한 점을 입력하세요...",
+                key="b2c_user_question",
+                label_visibility="collapsed"
+            )
+        with btn_col:
+            send_clicked = st.button("전송", use_container_width=True, type="primary")
 
-        # FAQ 버튼 또는 직접 입력 질문 처리
-        question_to_ask = getattr(st.session_state, "b2c_question", None) or user_question
+        # FAQ 버튼 또는 전송 버튼 클릭 처리
+        question_to_ask = getattr(st.session_state, "b2c_question", None)
+        if not question_to_ask and send_clicked and user_question:
+            question_to_ask = user_question
 
-        # Q&A 처리 - 새 질문 감지 및 처리
+        # 1단계: 새 질문 접수 → 로딩 상태로 먼저 표시
         is_new_question = (
             question_to_ask
             and question_to_ask != st.session_state.get("b2c_last_question")
-            and not st.session_state.get("b2c_processing")
+            and not st.session_state.get(pending_key)
         )
 
         if is_new_question:
-            # 새 질문 처리 시작
-            st.session_state.b2c_processing = True
             if "b2c_question" in st.session_state:
                 del st.session_state.b2c_question
 
-            st.markdown("#### 🤖 AI 답변")
-            with st.spinner(f"🔍 \"{question_to_ask}\" 에 대해 AI가 리뷰를 분석하고 있어요..."):
-                try:
-                    rag_chain = get_or_create_product_rag_chain(product)
-                    if rag_chain:
-                        response = rag_chain.query_with_sources(question_to_ask)
-                        st.session_state.b2c_answer = response["answer"]
-                        st.session_state.b2c_sources = response.get("sources", [])
-                    else:
-                        st.session_state.b2c_answer = "RAG 시스템 초기화 실패"
-                        st.session_state.b2c_sources = []
-                except Exception as e:
-                    st.session_state.b2c_answer = f"오류: {e}"
-                    st.session_state.b2c_sources = []
-
-            # 처리 완료
+            # 질문 즉시 추가 (로딩 상태)
+            st.session_state[chat_key].append({
+                "question": question_to_ask,
+                "answer": "💭 답변 준비중...",
+                "sources": []
+            })
             st.session_state.b2c_last_question = question_to_ask
-            st.session_state.b2c_processing = False
+            st.session_state[pending_key] = question_to_ask
+            st.rerun()  # 로딩 상태 먼저 표시
 
-        # 저장된 답변 표시
-        if st.session_state.get("b2c_answer"):
-            st.markdown("#### 🤖 AI 답변")
-            st.success(st.session_state.b2c_answer)
+        # 2단계: 로딩 상태에서 실제 AI 응답 생성
+        if st.session_state.get(pending_key):
+            pending_question = st.session_state[pending_key]
 
-            sources = st.session_state.get("b2c_sources", [])
-            if sources:
-                render_qa_sources(sources, key_prefix="faq")
+            try:
+                rag_chain = get_or_create_product_rag_chain(product)
+                if rag_chain:
+                    response = rag_chain.query_with_sources(pending_question)
+                    answer = response["answer"]
+                    sources = response.get("sources", [])
+                else:
+                    answer = "RAG 시스템을 초기화할 수 없습니다."
+                    sources = []
+            except Exception as e:
+                answer = f"오류가 발생했습니다: {e}"
+                sources = []
+
+            # 마지막 대화 업데이트
+            if st.session_state[chat_key]:
+                st.session_state[chat_key][-1] = {
+                    "question": pending_question,
+                    "answer": answer,
+                    "sources": sources
+                }
+
+            # 로딩 상태 해제
+            del st.session_state[pending_key]
+            st.rerun()  # 완료된 답변 표시
 
     # Q&A fragment 실행
     render_qa_fragment()
