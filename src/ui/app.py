@@ -1303,7 +1303,7 @@ def render_product_detail_content(product: Product):
                 end_idx = min(start_idx + reviews_per_page, total_reviews)
                 page_reviews = filtered_reviews[start_idx:end_idx]
 
-                for review_data in page_reviews:
+                for rv_idx, review_data in enumerate(page_reviews):
                     highlighted_html = highlight_aspect_in_text(
                         review_data["full_text"],
                         review_data["aspect_text"],
@@ -1365,8 +1365,10 @@ def render_product_detail_content(product: Product):
                             aspects_html += f'<div style="background-color: {a_bg}; padding: 6px 10px; border-radius: 5px; margin-top: 6px;">{a_emoji} <b>{a_name}</b>: {a_text}</div>'
                         aspects_html += '</div>'
 
+                    # 페이지+인덱스 기반 고유 ID로 페이지 변경 시 토글 상태 리셋
+                    detail_id = f"aspect_{aspect}_p{current_page}_i{rv_idx}"
                     st.markdown(f'''
-<details style="margin-bottom: 8px; border: 1px solid {border_color}; border-radius: 8px;">
+<details id="{detail_id}" style="margin-bottom: 8px; border: 1px solid {border_color}; border-radius: 8px;">
 <summary style="padding: 10px; cursor: pointer; color: {sentiment_color}; font-weight: 500; list-style: none;">
 {stars_str}{preview}{trust_label}
 </summary>
@@ -1973,8 +1975,8 @@ def render_product_qa(product: Product):
             if message["role"] == "assistant" and message.get("sources"):
                 render_qa_sources(message["sources"], key_prefix=f"history_{msg_idx}")
 
-    # 사용자 입력
-    if prompt := st.chat_input("이 제품에 대해 질문하세요..."):
+    # 사용자 입력 (메시지 수 기반 key로 입력창 리셋)
+    if prompt := st.chat_input("이 제품에 대해 질문하세요...", key=f"qa_input_{product_name}_{len(messages)}"):
         # 사용자 메시지 추가
         messages.append({"role": "user", "content": prompt})
 
@@ -2130,8 +2132,10 @@ def render_product_reviews(product: Product):
         new_review_class = "new-review-highlight" if is_this_new_review else ""
 
         # HTML details/summary로 접기/펼치기 구현
+        # 페이지+인덱스 기반 고유 ID로 페이지 변경 시 토글 상태 리셋
+        detail_id = f"review_p{current_page}_i{i}"
         st.markdown(f'''
-<details class="{new_review_class}" {open_attr} style="margin-bottom: 8px; border: 1px solid #ddd; border-radius: 8px; padding: 0;">
+<details id="{detail_id}" class="{new_review_class}" {open_attr} style="margin-bottom: 8px; border: 1px solid #ddd; border-radius: 8px; padding: 0;">
 <summary style="padding: 12px; cursor: pointer; color: {sentiment_color}; font-weight: 500; list-style: none;">
 {stars}{preview}{trust_label}
 </summary>
