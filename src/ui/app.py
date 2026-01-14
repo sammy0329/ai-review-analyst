@@ -310,6 +310,10 @@ st.markdown("""
 
 def init_session_state():
     """세션 상태 초기화."""
+    # 뷰 모드: "b2b" (기업) 또는 "b2c" (소비자)
+    if "view_mode" not in st.session_state:
+        st.session_state.view_mode = "b2c"  # 기본값: 소비자 모드
+
     # 페이지 네비게이션
     if "current_page" not in st.session_state:
         st.session_state.current_page = "product_list"  # product_list or product_detail
@@ -348,6 +352,97 @@ def init_session_state():
 
 
 init_session_state()
+
+
+# =============================================================================
+# 모드 토글 UI
+# =============================================================================
+
+def render_mode_toggle():
+    """뷰 모드 토글 렌더링."""
+    col1, col2, col3 = st.columns([1, 2, 1])
+
+    with col2:
+        # 현재 모드에 따른 라벨
+        mode_labels = {
+            "b2c": "🛒 소비자 모드",
+            "b2b": "📊 기업 모드"
+        }
+
+        # 토글 버튼 스타일
+        toggle_cols = st.columns([1, 1])
+
+        with toggle_cols[0]:
+            if st.button(
+                "🛒 소비자",
+                use_container_width=True,
+                type="primary" if st.session_state.view_mode == "b2c" else "secondary",
+                help="구매 결정에 도움이 되는 간단한 정보"
+            ):
+                st.session_state.view_mode = "b2c"
+                st.rerun()
+
+        with toggle_cols[1]:
+            if st.button(
+                "📊 기업",
+                use_container_width=True,
+                type="primary" if st.session_state.view_mode == "b2b" else "secondary",
+                help="상세 분석 및 인사이트 대시보드"
+            ):
+                st.session_state.view_mode = "b2b"
+                st.rerun()
+
+    st.markdown("---")
+
+
+def get_mode_description() -> str:
+    """현재 모드 설명 반환."""
+    if st.session_state.view_mode == "b2c":
+        return "💡 **소비자 모드**: 구매 결정에 필요한 핵심 정보만 보여드려요"
+    else:
+        return "💼 **기업 모드**: 상세 분석과 데이터 기반 인사이트를 제공해요"
+
+
+def get_or_create_product_rag_chain(product: Product):
+    """제품별 RAG Chain 생성 또는 캐시된 것 반환."""
+    product_name = product.name
+
+    # 이미 생성된 RAG Chain이 있으면 반환
+    if (st.session_state.product_rag_chain is not None and
+        st.session_state.get("current_rag_product") == product_name):
+        return st.session_state.product_rag_chain
+
+    try:
+        # 리뷰를 Review 형식으로 변환
+        reviews = [r.to_review() for r in product.reviews]
+
+        # 전처리
+        preprocessor = create_default_preprocessor(chunk_size=300)
+        processed = preprocessor.process_batch(reviews)
+
+        # 벡터 DB
+        embedder = create_embedder(
+            collection_name=f"product_{hash(product_name) % 10000}",
+            persist_directory="./data/chroma_db_products",
+        )
+        embedder.reset_collection()
+        embedder.add_reviews(processed, show_progress=False)
+
+        # RAG Chain
+        rag_chain = create_rag_chain(
+            embedder=embedder,
+            model_name="gpt-4o-mini",
+            top_k=5,
+        )
+
+        st.session_state.product_rag_chain = rag_chain
+        st.session_state.current_rag_product = product_name
+
+        return rag_chain
+
+    except Exception as e:
+        logger.error(f"RAG Chain 생성 오류: {e}")
+        return None
 
 
 # =============================================================================
@@ -403,6 +498,9 @@ def load_products(category: str):
 def render_product_list():
     """제품 목록 페이지 렌더링."""
     st.title("🛒 AI Review Analyst")
+
+    # 모드 토글
+    render_mode_toggle()
 
     products = st.session_state.products
 
@@ -564,7 +662,51 @@ def render_product_list():
 
 
 def render_product_card(product: Product):
-    """제품 카드 렌더링."""
+    """제품 카드 렌더링 (모드에 따라 분기)."""
+    if st.session_state.view_mode == "b2c":
+        render_product_card_b2c(product)
+    else:
+        render_product_card_b2b(product)
+
+
+def render_product_card_b2c(product: Product):
+    """소비자 모드 - 제품 카드 (간단한 추천 여부 중심)."""
+    sentiment_ratio = product.get_sentiment_ratio()
+    positive_ratio = sentiment_ratio["긍정"]
+    avg_rating = product.avg_rating
+
+    # 추천 여부 결정
+    if avg_rating >= 4.0 and positive_ratio >= 60:
+        verdict = "👍 추천"
+        verdict_style = "success"
+    elif avg_rating >= 3.5 or positive_ratio >= 50:
+        verdict = "🤔 보통"
+        verdict_style = "info"
+    else:
+        verdict = "⚠️ 주의"
+        verdict_style = "warning"
+
+    # 제품 제목
+    display_name = product.name[:25] + "..." if len(product.name) > 25 else product.name
+    st.markdown(f"**{display_name}**")
+
+    # 평점 & 추천
+    st.markdown(f"⭐ **{avg_rating:.1f}** · {verdict}")
+
+    # 리뷰 수
+    st.caption(f"📝 리뷰 {product.review_count}개")
+
+    # 상세 보기 버튼만 (비교는 B2B에서만)
+    if st.button("상세 보기", key=f"view_b2c_{product.name}", use_container_width=True):
+        st.session_state.selected_product = product
+        st.session_state.current_page = "product_detail"
+        st.rerun()
+
+    st.markdown("---")
+
+
+def render_product_card_b2b(product: Product):
+    """기업 모드 - 제품 카드 (상세 정보)."""
     sentiment_ratio = product.get_sentiment_ratio()
     positive_ratio = sentiment_ratio["긍정"]
 
@@ -609,7 +751,7 @@ def render_product_card(product: Product):
         if st.checkbox(
             "비교",
             value=is_in_compare,
-            key=f"compare_{product.name}",
+            key=f"compare_b2b_{product.name}",
             disabled=compare_disabled,
         ):
             if not is_in_compare:
@@ -623,7 +765,7 @@ def render_product_card(product: Product):
                 st.rerun()
 
     with col_detail:
-        if st.button("상세 보기", key=f"view_{product.name}", use_container_width=True):
+        if st.button("상세 보기", key=f"view_b2b_{product.name}", use_container_width=True):
             st.session_state.selected_product = product
             st.session_state.current_page = "product_detail"
             st.rerun()
@@ -654,6 +796,186 @@ def render_product_detail():
     # 헤더
     st.title(f"📦 {product.name}")
     st.caption(f"{product.category} > {product.main_category}")
+
+    # 모드 토글
+    render_mode_toggle()
+
+    # 모드별 렌더링 분기
+    if st.session_state.view_mode == "b2c":
+        render_product_detail_b2c(product)
+    else:
+        render_product_detail_b2b(product)
+
+
+def render_product_detail_b2c(product: Product):
+    """소비자 모드 - 제품 상세 페이지 (간단한 구매 결정 도움)."""
+    sentiment_ratio = product.get_sentiment_ratio()
+
+    # 한눈에 보는 평가 카드
+    st.subheader("📋 한눈에 보기")
+
+    # 전체 평가 요약
+    avg_rating = product.avg_rating
+    pos_ratio = sentiment_ratio["긍정"]
+
+    if avg_rating >= 4.0 and pos_ratio >= 60:
+        verdict = "👍 추천해요!"
+        verdict_color = "success"
+        verdict_detail = "평점도 높고 긍정 리뷰가 많아요"
+    elif avg_rating >= 3.5 or pos_ratio >= 50:
+        verdict = "🤔 괜찮아요"
+        verdict_color = "info"
+        verdict_detail = "전반적으로 무난한 제품이에요"
+    else:
+        verdict = "⚠️ 신중히 고려하세요"
+        verdict_color = "warning"
+        verdict_detail = "부정적인 리뷰가 있어요"
+
+    # 평가 카드
+    eval_col1, eval_col2 = st.columns([1, 2])
+
+    with eval_col1:
+        st.metric("평균 평점", f"⭐ {avg_rating:.1f} / 5.0")
+        st.metric("리뷰 수", f"📝 {product.review_count}개")
+
+    with eval_col2:
+        if verdict_color == "success":
+            st.success(f"**{verdict}**\n\n{verdict_detail}")
+        elif verdict_color == "warning":
+            st.warning(f"**{verdict}**\n\n{verdict_detail}")
+        else:
+            st.info(f"**{verdict}**\n\n{verdict_detail}")
+
+    st.markdown("---")
+
+    # 장점/단점 TOP 3
+    st.subheader("👍 장점 vs 👎 단점")
+
+    # 속성별 감정 분석
+    aspect_sentiment = {}
+    for review in product.reviews:
+        for aspect in review.aspects:
+            aspect_name = aspect.get("Aspect", "")
+            polarity = int(aspect.get("SentimentPolarity", 0))
+
+            if aspect_name:
+                if aspect_name not in aspect_sentiment:
+                    aspect_sentiment[aspect_name] = {"positive": 0, "negative": 0}
+
+                if polarity == 1:
+                    aspect_sentiment[aspect_name]["positive"] += 1
+                elif polarity == -1:
+                    aspect_sentiment[aspect_name]["negative"] += 1
+
+    # 긍정/부정 TOP 3 추출
+    positive_aspects = sorted(
+        [(k, v["positive"]) for k, v in aspect_sentiment.items() if v["positive"] > 0],
+        key=lambda x: x[1],
+        reverse=True
+    )[:3]
+
+    negative_aspects = sorted(
+        [(k, v["negative"]) for k, v in aspect_sentiment.items() if v["negative"] > 0],
+        key=lambda x: x[1],
+        reverse=True
+    )[:3]
+
+    good_col, bad_col = st.columns(2)
+
+    with good_col:
+        st.markdown("#### 👍 이런 점이 좋아요")
+        if positive_aspects:
+            for aspect, count in positive_aspects:
+                st.markdown(f"- **{aspect}** ({count}명 언급)")
+        else:
+            st.caption("긍정적인 속성 정보가 없어요")
+
+    with bad_col:
+        st.markdown("#### 👎 이런 점이 아쉬워요")
+        if negative_aspects:
+            for aspect, count in negative_aspects:
+                st.markdown(f"- **{aspect}** ({count}명 언급)")
+        else:
+            st.caption("부정적인 속성 정보가 없어요")
+
+    st.markdown("---")
+
+    # 대표 리뷰
+    st.subheader("💬 대표 리뷰")
+
+    # 긍정/부정 대표 리뷰 각 2개
+    positive_reviews = [r for r in product.reviews if r.general_polarity == 1][:2]
+    negative_reviews = [r for r in product.reviews if r.general_polarity == -1][:2]
+
+    review_col1, review_col2 = st.columns(2)
+
+    with review_col1:
+        st.markdown("**😊 긍정 리뷰**")
+        if positive_reviews:
+            for r in positive_reviews:
+                text = r.raw_text[:150] + "..." if len(r.raw_text) > 150 else r.raw_text
+                st.info(f'"{text}"')
+        else:
+            st.caption("긍정 리뷰가 없어요")
+
+    with review_col2:
+        st.markdown("**😞 부정 리뷰**")
+        if negative_reviews:
+            for r in negative_reviews:
+                text = r.raw_text[:150] + "..." if len(r.raw_text) > 150 else r.raw_text
+                st.warning(f'"{text}"')
+        else:
+            st.caption("부정 리뷰가 없어요")
+
+    st.markdown("---")
+
+    # 간단 Q&A
+    st.subheader("💡 궁금한 점이 있으신가요?")
+    st.caption("리뷰를 기반으로 AI가 답변해드려요")
+
+    # 자주 묻는 질문 버튼
+    faq_col1, faq_col2, faq_col3 = st.columns(3)
+
+    with faq_col1:
+        if st.button("📦 배송은 어때요?", use_container_width=True, key="faq_delivery"):
+            st.session_state.b2c_question = "배송은 어떤가요? 빠른 편인가요?"
+
+    with faq_col2:
+        if st.button("💰 가성비 좋아요?", use_container_width=True, key="faq_value"):
+            st.session_state.b2c_question = "가성비가 좋은 제품인가요?"
+
+    with faq_col3:
+        if st.button("⚠️ 단점은 뭐예요?", use_container_width=True, key="faq_cons"):
+            st.session_state.b2c_question = "이 제품의 주요 단점이 뭔가요?"
+
+    # 직접 질문 입력
+    user_question = st.text_input(
+        "직접 질문하기",
+        placeholder="예: 사이즈가 작은 편인가요?",
+        key="b2c_user_question"
+    )
+
+    # FAQ 버튼 또는 직접 입력 질문 처리
+    question_to_ask = getattr(st.session_state, "b2c_question", None) or user_question
+
+    if question_to_ask:
+        if "b2c_question" in st.session_state:
+            del st.session_state.b2c_question
+
+        with st.spinner("🤖 AI가 리뷰를 분석하고 있어요..."):
+            try:
+                rag_chain = get_or_create_product_rag_chain(product)
+                if rag_chain:
+                    response = rag_chain.query(question_to_ask)
+                    st.markdown("#### �� AI 답변")
+                    st.success(response.answer)
+            except Exception as e:
+                st.error(f"답변 생성 중 오류: {e}")
+
+
+def render_product_detail_b2b(product: Product):
+    """기업 모드 - 제품 상세 페이지 (상세 분석 대시보드)."""
+    sentiment_ratio = product.get_sentiment_ratio()
 
     # 요약 메트릭
     col1, col2, col3, col4 = st.columns(4)
