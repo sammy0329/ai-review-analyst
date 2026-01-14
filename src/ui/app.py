@@ -598,13 +598,14 @@ def load_products(category: str):
                 # 리뷰 3개 이상인 제품만 포함
                 if p.review_count >= 3:
                     product = Product(
-                        id=str(p.id),
                         name=p.name,
-                        category=p.main_category,
-                        sub_category=p.category,
-                        reviews=[],  # 리뷰는 상세 페이지에서 로드
-                        avg_rating=p.avg_rating,
+                        category=p.category,  # 소분류
+                        main_category=p.main_category,  # 대분류
                         review_count=p.review_count,
+                        avg_rating=p.avg_rating,
+                        sentiment_distribution={"긍정": 0, "중립": 0, "부정": 0},
+                        top_aspects=[],
+                        reviews=[],
                     )
                     products.append(product)
 
