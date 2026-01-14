@@ -605,6 +605,29 @@
 
 ---
 
+### Epic 7.6: SQLite 마이그레이션 및 서버 배포 버그 수정 ✅ (Issue #28)
+
+> **목표:** JSON 기반 데이터 로딩에서 SQLite DB 기반으로 전환 시 발생한 버그 수정
+
+| Task ID | Task | 상태 | 설명 |
+|---------|------|------|------|
+| 7.6.1 | [x] load_products() SQLite 전환 | 완료 | AIHubDataLoader → get_all_products() |
+| 7.6.2 | [x] Product 객체 필드명 수정 | 완료 | id, sub_category 제거, 올바른 필드 사용 |
+| 7.6.3 | [x] 감정 분포 실제 데이터 로드 | 완료 | get_review_count()로 실제 통계 조회 |
+| 7.6.4 | [x] 제품 상세 리뷰 DB 로드 | 완료 | product.reviews에 DB 리뷰 변환 로드 |
+| 7.6.5 | [x] 리뷰 작성 버튼 UX 개선 | 완료 | 버튼 비활성화 + "저장 중..." 텍스트 |
+
+**완료 기준:** EC2 서버에서 SQLite DB 기반 정상 동작
+
+**구현 내용:**
+- **load_products()**: `AIHubDataLoader` 대신 `get_all_products()` 사용
+- **Product 필드**: `sentiment_distribution`, `top_aspects` 등 필수 필드 추가
+- **감정 분포**: `get_review_count(product_name)`으로 실제 긍정/중립/부정 통계
+- **리뷰 로드**: DB 리뷰 → `AIHubReview` 객체 변환 (sentiment → polarity, rating → score)
+- **버튼 UX**: `st.session_state` 기반 로딩 상태 관리, disabled 속성 활용
+
+---
+
 ## Progress Summary
 
 | Phase | Epic 수 | 완료 | 진행률 |
@@ -615,8 +638,8 @@
 | Phase 4: UI & Polish | 4 | 4 | 100% |
 | Phase 5: Deployment | 3 | 1 (+2 스킵) | 100% |
 | Phase 6: Testing & Docs | 2 | 2 | 100% |
-| Phase 7: Consumer Review UX | 5 | 5 | 100% |
-| **Total** | **25** | **23** | **92%** |
+| Phase 7: Consumer Review UX | 6 | 6 | 100% |
+| **Total** | **26** | **24** | **92%** |
 
 ---
 
@@ -643,6 +666,7 @@
 - [x] 7.4.1 ~ 7.4.2: UI 일관성 개선 ✅ (Issue #27)
 - [x] 7.5.1 ~ 7.5.6: Q&A 채팅 UX 개선 ✅
 - [x] 7.3.1 ~ 7.3.2: 리뷰 데이터 개선 ✅
+- [x] 7.6.1 ~ 7.6.5: SQLite 마이그레이션 버그 수정 ✅ (Issue #28)
 
 ---
 
@@ -654,4 +678,4 @@
 
 ---
 
-*최종 업데이트: 2026-01-14 (Phase 7 완료 - Epic 7.3: 리뷰 날짜 임의화, 대표 리뷰 선정)*
+*최종 업데이트: 2026-01-14 (Epic 7.6: SQLite 마이그레이션 및 서버 배포 버그 수정)*
