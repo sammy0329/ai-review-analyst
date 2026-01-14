@@ -882,22 +882,89 @@ def render_product_detail_content(product: Product):
                     with st.chat_message("assistant"):
                         st.write(chat['answer'])
 
-                        # 근거 리뷰 토글
+                        # 근거 리뷰 토글 (render_qa_sources와 동일한 형식)
                         sources = chat.get("sources", [])
                         if sources and chat['answer'] != "💭 답변 준비중...":
                             with st.popover(f"📚 근거 리뷰 ({len(sources)}개)"):
-                                for idx, src in enumerate(sources[:5]):
-                                    # Document 객체 또는 dict 처리
-                                    if hasattr(src, 'page_content'):
-                                        content = src.page_content
-                                    elif isinstance(src, dict):
-                                        # text 키 우선 (RAG chain 반환 형식)
-                                        content = src.get("text", src.get("page_content", src.get("content", "")))
-                                    else:
-                                        content = str(src)
+                                st.caption("💡 AI가 답변을 생성할 때 참고한 리뷰들입니다")
 
-                                    if content:
-                                        st.caption(f"{idx+1}. {content[:150]}...")
+                                # 감정/속성 색상 매핑
+                                sentiment_colors = {"긍정": "#1565c0", "부정": "#c62828", "중립": "#2e7d32"}
+                                aspect_colors = {1: "#1565c0", "1": "#1565c0", -1: "#c62828", "-1": "#c62828", 0: "#666", "0": "#666"}
+
+                                for idx, src in enumerate(sources[:5], 1):
+                                    # 텍스트와 평점 추출
+                                    if hasattr(src, 'page_content'):
+                                        text = src.page_content
+                                        rating = src.metadata.get("rating") if hasattr(src, 'metadata') else None
+                                    elif isinstance(src, dict):
+                                        text = src.get("text", src.get("page_content", ""))
+                                        rating = src.get("rating")
+                                    else:
+                                        text = str(src)
+                                        rating = None
+
+                                    if not text:
+                                        continue
+
+                                    # 가짜 리뷰 검사
+                                    fake_result = check_review_text(text, int(rating) if rating else None)
+                                    is_suspicious = fake_result.is_suspicious
+
+                                    # DB에서 속성 분석 조회
+                                    aspects = get_review_aspects_by_text(text)
+
+                                    # 감정 추정 (별점 기반)
+                                    if rating:
+                                        if rating >= 4:
+                                            sentiment, emoji = "긍정", "😊"
+                                        elif rating <= 2:
+                                            sentiment, emoji = "부정", "😞"
+                                        else:
+                                            sentiment, emoji = "중립", "😐"
+                                    else:
+                                        sentiment, emoji = "중립", "😐"
+
+                                    color = sentiment_colors.get(sentiment, "#666")
+                                    rating_display = f"⭐ {rating}" if rating else "평점 없음"
+                                    suspicious_label = " <span style='color: orange; font-weight: bold;'>[의심]</span>" if is_suspicious else ""
+
+                                    # 속성 태그 HTML
+                                    aspect_tags_html = ""
+                                    if aspects:
+                                        tags = []
+                                        for asp in aspects[:5]:
+                                            asp_name = asp.get("Aspect", "")
+                                            asp_polarity = asp.get("SentimentPolarity", 0)
+                                            asp_color = aspect_colors.get(asp_polarity, "#666")
+                                            if asp_name:
+                                                tags.append(
+                                                    f'<span style="display: inline-block; padding: 2px 8px; margin: 2px; '
+                                                    f'border-radius: 12px; background-color: {asp_color}; color: white; '
+                                                    f'font-size: 0.75em;">{asp_name}</span>'
+                                                )
+                                        if tags:
+                                            aspect_tags_html = f'<div style="margin-top: 8px;"><b>🏷️ 속성 분석:</b> {"".join(tags)}</div>'
+
+                                    # HTML 렌더링
+                                    st.markdown(
+                                        f"""
+                                        <div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid {color};">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                                <span style="font-weight: bold; color: #333;">[{idx}] {emoji} {sentiment}</span>
+                                                <span style="font-size: 0.85em; color: #666;">{rating_display}{suspicious_label}</span>
+                                            </div>
+                                            <div style="line-height: 1.6; color: #444;">{text}</div>
+                                            {aspect_tags_html}
+                                        </div>
+                                        """,
+                                        unsafe_allow_html=True
+                                    )
+
+                                    # 의심 사유 표시
+                                    if is_suspicious and fake_result.reasons:
+                                        reason_text = ", ".join([r.value for r in fake_result.reasons])
+                                        st.caption(f"⚠️ 의심 사유: {reason_text}")
 
         # 자주 묻는 질문 버튼
         faq_col1, faq_col2, faq_col3 = st.columns(3)
