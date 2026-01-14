@@ -931,15 +931,25 @@ def render_product_detail_content(product: Product):
                                 stopwords = {"이", "가", "은", "는", "을", "를", "의", "에", "에서", "로", "으로", "와", "과", "도", "만", "이나", "나", "고", "하고", "해서", "어떤", "어떻", "뭐", "뭔", "좀", "잘", "더", "많이", "정말", "진짜", "너무", "아주", "매우", "제품", "상품", "이거", "저거", "그거", "있", "없", "하", "되", "같", "인가요", "인가", "예요", "에요", "나요", "까요"}
                                 keywords = [w for w in re.findall(r'[가-힣]+', question) if len(w) >= 2 and w not in stopwords]
 
-                                def highlight_keywords(text: str, keywords: list) -> str:
-                                    """텍스트에서 키워드 하이라이트."""
+                                def highlight_sentences(text: str, keywords: list) -> str:
+                                    """키워드가 포함된 문장 전체를 하이라이트."""
                                     if not keywords:
                                         return text
-                                    for kw in keywords:
-                                        # 키워드 포함 단어 하이라이트 (부분 매칭)
-                                        pattern = f'({re.escape(kw)})'
-                                        text = re.sub(pattern, r'<mark style="background-color: #fff3cd; padding: 1px 3px; border-radius: 3px;">\1</mark>', text, flags=re.IGNORECASE)
-                                    return text
+                                    # 문장 분리 (마침표, 느낌표, 물음표, 또는 ~요/~다/~네요 등)
+                                    sentences = re.split(r'(?<=[.!?요다네])\s*', text)
+                                    highlighted_parts = []
+                                    for sentence in sentences:
+                                        if not sentence.strip():
+                                            continue
+                                        # 키워드 포함 여부 확인
+                                        has_keyword = any(kw in sentence for kw in keywords)
+                                        if has_keyword:
+                                            highlighted_parts.append(
+                                                f'<mark style="background-color: #fff3cd; padding: 2px 4px; border-radius: 4px;">{sentence}</mark>'
+                                            )
+                                        else:
+                                            highlighted_parts.append(sentence)
+                                    return ' '.join(highlighted_parts)
 
                                 # 감정/속성 색상 매핑
                                 sentiment_colors = {"긍정": "#1565c0", "부정": "#c62828", "중립": "#2e7d32"}
@@ -983,7 +993,7 @@ def render_product_detail_content(product: Product):
                                     suspicious_label = " <span style='color: orange; font-weight: bold;'>[의심]</span>" if is_suspicious else ""
 
                                     # 키워드 하이라이트 적용
-                                    highlighted_text = highlight_keywords(text, keywords)
+                                    highlighted_text = highlight_sentences(text, keywords)
 
                                     # 속성 태그 HTML
                                     aspect_tags_html = ""
