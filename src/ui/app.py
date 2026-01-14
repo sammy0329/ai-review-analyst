@@ -362,6 +362,21 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+/* 화면 깜빡임 방지 */
+html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
+    background-color: #ffffff !important;
+}
+.stApp {
+    background-color: #ffffff !important;
+}
+/* rerun 시 깜빡임 최소화 */
+[data-testid="stAppViewContainer"] > section {
+    background-color: #ffffff !important;
+}
+.main .block-container {
+    background-color: #ffffff !important;
+}
+
 /* 모바일 반응형 (768px 이하) */
 @media (max-width: 768px) {
     /* 메인 컨테이너 패딩 조정 */
