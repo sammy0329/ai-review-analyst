@@ -28,7 +28,8 @@ from src.core.exceptions import ReviewAnalystError, RateLimitError, Authenticati
 from src.database import (
     init_db, add_review, get_reviews_by_product, migrate_aihub_product,
     get_or_create_product, delete_review, get_review_aspects_by_text,
-    get_product_by_name
+    get_product_by_name, get_products as db_get_products,
+    get_sentiment_stats
 )
 from src.pipeline.aihub_loader import AIHubDataLoader, Product
 from src.pipeline.aspect_extractor import create_aspect_extractor
@@ -576,40 +577,33 @@ def check_api_key():
 # 제품 로드
 # =============================================================================
 
-def get_data_dir() -> str:
-    """데이터 디렉토리 경로 반환 (병합 폴더 우선)."""
-    from pathlib import Path
-    merged_dir = Path("data/aihub_merged")
-    if merged_dir.exists():
-        return str(merged_dir)
-    return "data/aihub_data"
-
-
 def load_products(category: str):
-    """제품 목록 로드."""
+    """제품 목록 로드 (SQLite DB에서)."""
     with st.spinner("📦 제품 로드 중..."):
         try:
             # DB 초기화
             init_db()
 
-            loader = AIHubDataLoader(data_dir=get_data_dir())
-
             cat_filter = None if category == "전체" else category
 
-            products = loader.get_products(
-                category=cat_filter,
-                min_reviews=3,
-                limit=None,  # 페이지네이션으로 처리
-            )
+            # SQLite에서 제품 목록 조회
+            product_dicts = db_get_products(category=cat_filter)
 
-            # AIhub 데이터를 DB에 마이그레이션
-            migrated_count = 0
-            for product in products:
-                count = migrate_aihub_product(product)
-                migrated_count += count
-
-            if migrated_count > 0:
-                logger.info(f"DB 마이그레이션: {migrated_count}개 리뷰 추가")
+            # dict를 Product 객체로 변환
+            products = []
+            for p in product_dicts:
+                # 리뷰 3개 이상인 제품만 포함
+                if p.get("review_count", 0) >= 3:
+                    product = Product(
+                        id=str(p["id"]),
+                        name=p["name"],
+                        category=p.get("category", ""),
+                        sub_category=p.get("subcategory", ""),
+                        reviews=[],  # 리뷰는 상세 페이지에서 로드
+                        avg_rating=p.get("avg_rating", 0.0),
+                        review_count=p.get("review_count", 0),
+                    )
+                    products.append(product)
 
             st.session_state.products = products
             st.session_state.current_page = "product_list"
