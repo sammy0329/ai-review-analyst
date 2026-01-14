@@ -888,6 +888,23 @@ def render_product_detail_content(product: Product):
                             with st.popover(f"📚 근거 리뷰 ({len(sources)}개)"):
                                 st.caption("💡 AI가 답변을 생성할 때 참고한 리뷰들입니다")
 
+                                # 질문에서 키워드 추출 (하이라이트용)
+                                import re
+                                question = chat['question']
+                                # 불용어 제외하고 2자 이상 키워드 추출
+                                stopwords = {"이", "가", "은", "는", "을", "를", "의", "에", "에서", "로", "으로", "와", "과", "도", "만", "이나", "나", "고", "하고", "해서", "어떤", "어떻", "뭐", "뭔", "좀", "잘", "더", "많이", "정말", "진짜", "너무", "아주", "매우", "제품", "상품", "이거", "저거", "그거", "있", "없", "하", "되", "같", "인가요", "인가", "예요", "에요", "나요", "까요"}
+                                keywords = [w for w in re.findall(r'[가-힣]+', question) if len(w) >= 2 and w not in stopwords]
+
+                                def highlight_keywords(text: str, keywords: list) -> str:
+                                    """텍스트에서 키워드 하이라이트."""
+                                    if not keywords:
+                                        return text
+                                    for kw in keywords:
+                                        # 키워드 포함 단어 하이라이트 (부분 매칭)
+                                        pattern = f'({re.escape(kw)})'
+                                        text = re.sub(pattern, r'<mark style="background-color: #fff3cd; padding: 1px 3px; border-radius: 3px;">\1</mark>', text, flags=re.IGNORECASE)
+                                    return text
+
                                 # 감정/속성 색상 매핑
                                 sentiment_colors = {"긍정": "#1565c0", "부정": "#c62828", "중립": "#2e7d32"}
                                 aspect_colors = {1: "#1565c0", "1": "#1565c0", -1: "#c62828", "-1": "#c62828", 0: "#666", "0": "#666"}
@@ -929,6 +946,9 @@ def render_product_detail_content(product: Product):
                                     rating_display = f"⭐ {rating}" if rating else "평점 없음"
                                     suspicious_label = " <span style='color: orange; font-weight: bold;'>[의심]</span>" if is_suspicious else ""
 
+                                    # 키워드 하이라이트 적용
+                                    highlighted_text = highlight_keywords(text, keywords)
+
                                     # 속성 태그 HTML
                                     aspect_tags_html = ""
                                     if aspects:
@@ -954,7 +974,7 @@ def render_product_detail_content(product: Product):
                                                 <span style="font-weight: bold; color: #333;">[{idx}] {emoji} {sentiment}</span>
                                                 <span style="font-size: 0.85em; color: #666;">{rating_display}{suspicious_label}</span>
                                             </div>
-                                            <div style="line-height: 1.6; color: #444;">{text}</div>
+                                            <div style="line-height: 1.6; color: #444;">{highlighted_text}</div>
                                             {aspect_tags_html}
                                         </div>
                                         """,
