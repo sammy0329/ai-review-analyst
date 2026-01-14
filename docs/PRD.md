@@ -2,9 +2,9 @@
 
 **부제: 비정형 리뷰 데이터를 활용한 이커머스 구매 의사결정 최적화 솔루션**
 
-| **문서 버전**   | v1.1                  | **작성자**      | 안성재                                                       |
+| **문서 버전**   | v1.2                  | **작성자**      | 안성재                                                       |
 | --------------- | --------------------- | --------------- | ------------------------------------------------------------ |
-| **상태**        | 개발 완료 (Phase 1-5) | **타겟 플랫폼** | Web (MVP), App Integration                                   |
+| **상태**        | 개발 완료 (Phase 1-7) | **타겟 플랫폼** | Web (MVP), App Integration                                   |
 | **최종 수정일** | 2026-01-14            | **GitHub**      | [Repository](https://github.com/sammy0329/ai-review-analyst) |
 
 ---
@@ -48,7 +48,7 @@
 ### 3.2 기술적 목표 (Technical Goal)
 
 - **LLM Hallucination 최소화:** RAG 아키텍처를 통해 실제 리뷰 원문에 근거한 답변 생성
-- **자율 에이전트 구현:** 사용자의 의도(단순 요약 vs 특정 질문 vs 비교)를 파악하여 동적으로 도구를 선택하는 Agent Flow 구현
+- **자율 에이전트 구현:** 사용자의 의도(단순 요약 vs 특정 질문)를 파악하여 동적으로 RAG 프롬프트를 선택하는 Agent Flow 구현
 
 ---
 
@@ -106,21 +106,7 @@
 
 ---
 
-### F3. 상품 비교 분석 (Comparison Agent)
-
-**설명:** 두 개 이상의 상품 URL을 입력하면 가격, 스펙 외에 **"실사용자 경험 차이"**를 비교.
-
-**시나리오 예시:**
-
-- A상품: "맛있지만 배송이 느림"
-- B상품: "맛은 평범하지만 로켓배송"
-- → 사용자의 우선순위에 따라 추천
-
-**관련 기술:** `Multi-Agent`, `Reasoning`, `LangGraph`
-
----
-
-### F4. 가짜 리뷰 필터링 (Anti-Spam Filter)
+### F3. 가짜 리뷰 필터링 (Anti-Spam Filter)
 
 **설명:** 지나치게 반복적인 문구, 모호한 칭찬만 있는 리뷰(어뷰징 의심)를 LLM이 식별하여 분석 데이터에서 제외하거나 가중치를 낮춤.
 
@@ -128,7 +114,7 @@
 
 ---
 
-### F5. LLM 기반 속성 추출 (Aspect Extraction)
+### F4. LLM 기반 속성 추출 (Aspect Extraction)
 
 **설명:** 라벨이 없는 Raw 리뷰 텍스트에서 LLM을 활용해 속성(Aspect)을 자동으로 추출하고, 각 속성에 대한 감정을 분석합니다.
 
@@ -137,7 +123,6 @@
 - **속성 자동 추출:** 가격, 디자인, 사이즈, 품질, 배송 등 리뷰에 언급된 속성 식별
 - **속성별 감정 분석:** 각 속성에 대한 긍정/부정/중립 판단
 - **속성별 통계 시각화:** 차트를 통한 속성별 감정 분포 표시
-- **제품 비교:** 동일 속성 기준으로 여러 제품 비교 분석
 
 **시나리오 예시:**
 
@@ -160,19 +145,24 @@
 
 ---
 
-### F6. 쇼핑몰 스타일 제품 탐색 (Product Explorer)
+### F5. 쇼핑몰 스타일 제품 탐색 (Product Explorer)
 
 **설명:** 실제 쇼핑몰처럼 제품 목록 → 제품 상세 → 리뷰 분석/Q&A 형태의 직관적인 탐색 경험을 제공합니다.
 
 **핵심 기능:**
 
-- **제품 목록 페이지:** 카드 그리드 형태로 제품 표시, 평점/리뷰 수/감정 요약 한눈에 확인
+- **제품 목록 페이지:** 카드 그리드 형태로 제품 표시, 평점/리뷰 수/추천 판단 한눈에 확인
 - **카테고리 필터링:** 패션, 화장품, 가전, IT기기, 생활용품 선택
 - **검색 및 정렬:** 제품명 검색, 리뷰 많은순/평점 높은순 정렬
-- **페이지네이션:** 제품 목록 12개/페이지, 리뷰 목록 10개/페이지
-- **제품 상세 페이지:** 요약, 속성 분석, Q&A, 리뷰 목록 4개 탭 구성
-- **속성 분석 뷰:** 전체 리뷰 텍스트에서 속성 하이라이트 (감정별 색상), 감정 토글 필터
-- **제품별 Q&A:** 해당 제품의 리뷰만으로 RAG 구성, 맥락 있는 질의응답
+- **페이지네이션:** 제품 목록 12개/페이지, 리뷰 목록 5개/페이지
+
+**제품 상세 페이지 구성:**
+
+- **📋 한눈에 보기:** 평점, 리뷰 수, AI 추천 판단 (강점/약점 근거 제시)
+- **✏️ 리뷰 작성:** 사용자 리뷰 추가, LLM 속성 분석 후 저장
+- **💬 AI Q&A:** 카카오톡 스타일 채팅, 근거 리뷰 하이라이트
+- **🏷️ 속성별 상세 리뷰:** 속성별 감정 통계, 리뷰 원문 + 하이라이트
+- **📋 전체 리뷰:** 최신순 정렬, 감정별 색상, 의심 리뷰 표시
 
 **UI 구조:**
 
@@ -182,11 +172,17 @@
 │ 제품 A  │ │ 제품 B  │ │ 제품 C  │
 │ ⭐ 4.2  │ │ ⭐ 3.8  │ │ ⭐ 4.7  │
 │ 리뷰 42 │ │ 리뷰 28 │ │ 리뷰 156│
-│ 🟢 긍정 │ │ 🟡 보통 │ │ 🟢 긍정 │
+│👍 추천  │ │🤔 괜찮음│ │👍 추천  │
 └─────────┘ └─────────┘ └─────────┘
             ↓ 클릭
 제품 상세
-[📊 요약] [🏷️ 속성분석] [💬 Q&A] [📋 리뷰목록]
+┌─────────────────────────────────┐
+│ 📋 한눈에 보기 (추천/주의)      │
+│ ✏️ 리뷰 작성                    │
+│ 💬 AI Q&A (카카오톡 스타일)     │
+│ 🏷️ 속성별 상세 리뷰            │
+│ 📋 전체 리뷰                    │
+└─────────────────────────────────┘
 ```
 
 **기대 효과:**
@@ -194,8 +190,9 @@
 - 사용자가 익숙한 쇼핑몰 UX로 진입 장벽 낮춤
 - 제품 단위로 분석하여 더 구체적인 인사이트 제공
 - "이 제품" 맥락에서 질문 가능하여 정확한 답변
+- 근거 리뷰 확인으로 AI 답변 신뢰도 향상
 
-**관련 기술:** `Streamlit`, `Session State`, `Data Grouping`, `RAG per Product`
+**관련 기술:** `Streamlit`, `Session State`, `RAG per Product`, `Fake Review Filter`
 
 ---
 
@@ -203,39 +200,43 @@
 
 ```mermaid
 flowchart TD
-    subgraph Input["1. 입력"]
-        A[🛒 제품 선택] --> B{분석 유형}
-        B -->|단일 제품| C[제품 상세 페이지]
-        B -->|비교 분석| D[2개 제품 선택]
+    subgraph Browse["1. 제품 탐색"]
+        A[🏠 제품 목록] --> B[카테고리/검색 필터]
+        B --> C[제품 카드 클릭]
     end
 
-    subgraph Processing["2. 데이터 처리"]
-        C --> E[리뷰 데이터 로드]
-        D --> E
-        E --> F[Vector DB 검색]
-        F --> G[관련 리뷰 추출]
+    subgraph Detail["2. 제품 상세"]
+        C --> D[📋 한눈에 보기]
+        D --> E{사용자 행동}
+        E -->|질문| F[💬 AI Q&A]
+        E -->|상세 확인| G[🏷️ 속성별 리뷰]
+        E -->|전체 보기| H[📋 전체 리뷰]
+        E -->|리뷰 작성| I[✏️ 리뷰 추가]
     end
 
-    subgraph Analysis["3. AI 분석"]
-        G --> H{사용자 의도 분류}
-        H -->|요약| I[📊 Summarize Agent]
-        H -->|질문| J[💬 Q&A Agent]
-        H -->|비교| K[⚖️ Compare Agent]
+    subgraph RAG["3. RAG 처리"]
+        F --> J[Vector DB 검색]
+        J --> K[관련 리뷰 추출]
+        K --> L[LLM 답변 생성]
+        L --> M[답변 + 근거 리뷰]
     end
 
-    subgraph Output["4. 결과 출력"]
-        I --> L[요약 리포트]
-        J --> M[답변 + 출처]
-        K --> N[비교 분석표]
-        L --> O[🛍️ 구매 결정]
-        M --> O
-        N --> O
+    subgraph Decision["4. 구매 결정"]
+        D --> N{추천 판단}
+        M --> N
+        G --> N
+        H --> N
+        N -->|👍 추천| O[구매 진행]
+        N -->|🤔 고민| P[추가 질문]
+        N -->|⚠️ 주의| Q[다른 제품 탐색]
+        P --> F
+        Q --> A
     end
 
-    style Input fill:#e1f5fe
-    style Processing fill:#fff3e0
-    style Analysis fill:#f3e5f5
-    style Output fill:#e8f5e9
+    style Browse fill:#e1f5fe
+    style Detail fill:#fff3e0
+    style RAG fill:#f3e5f5
+    style Decision fill:#e8f5e9
 ```
 
 ---
@@ -260,7 +261,6 @@ flowchart TB
             Router{Intent Classifier}
             Router -->|summary| Sum[📊 Summarize Agent]
             Router -->|qa| QA[💬 Q&A Agent]
-            Router -->|compare| Comp[⚖️ Compare Agent]
         end
 
         LC --> Router
@@ -268,8 +268,9 @@ flowchart TB
 
     subgraph Data["💾 Data Layer"]
         direction LR
+        SQLite[(SQLite\nMetadata)]
         Chroma[(ChromaDB\nVector Store)]
-        AIHub[(AI Hub\n250K Reviews)]
+        AIHub[(AI Hub\n180K+ Reviews)]
     end
 
     subgraph External["☁️ External Services"]
@@ -281,10 +282,10 @@ flowchart TB
     Streamlit --> LC
     Sum --> OpenAI
     QA --> OpenAI
-    Comp --> OpenAI
     QA --> Chroma
     Sum --> Chroma
-    AIHub --> Chroma
+    AIHub --> SQLite
+    SQLite --> Chroma
     Chroma --> Embed
 
     style Client fill:#e3f2fd
@@ -302,7 +303,6 @@ stateDiagram-v2
 
     IntentClassifier --> QAAgent: intent = "qa"
     IntentClassifier --> SummarizeAgent: intent = "summary"
-    IntentClassifier --> CompareAgent: intent = "compare"
 
     state QAAgent {
         [*] --> SearchReviews
@@ -318,16 +318,8 @@ stateDiagram-v2
         GenerateSummary --> [*]
     }
 
-    state CompareAgent {
-        [*] --> ExtractProscons
-        ExtractProscons --> CompareAspects
-        CompareAspects --> GenerateRecommendation
-        GenerateRecommendation --> [*]
-    }
-
-    QAAgent --> [*]: 답변 반환
+    QAAgent --> [*]: 답변 + 근거 리뷰 반환
     SummarizeAgent --> [*]: 요약 반환
-    CompareAgent --> [*]: 비교 결과 반환
 ```
 
 ### 7.2 RAG Pipeline (Sequence)
@@ -377,7 +369,7 @@ sequenceDiagram
 | **카테고리**   | 패션, 화장품, 가전, IT기기, 생활용품                                 |
 | **라벨**       | 속성별 감정 태깅 (배송, 품질, 가격 등)                               |
 | **형식**       | JSON, TXT                                                            |
-| **활용 목적**  | RAG 학습, 속성별 감성 분석, 상품 비교                                |
+| **활용 목적**  | RAG 학습, 속성별 감성 분석, 제품 추천 판단                           |
 
 ### 하이브리드 접근법
 
@@ -446,89 +438,19 @@ flowchart LR
 
 ---
 
-## 10. 개발 로드맵 (Development Roadmap)
-
-```mermaid
-gantt
-    title AI Review Analyst 개발 타임라인
-    dateFormat  YYYY-MM-DD
-
-    section Phase 1: Foundation
-    환경 설정           :done, p1-1, 2025-12-01, 3d
-    크롤러 개발         :done, p1-2, after p1-1, 5d
-    AI Hub 통합         :done, p1-3, after p1-2, 4d
-    전처리 파이프라인   :done, p1-4, after p1-3, 3d
-
-    section Phase 2: Core RAG
-    ChromaDB 연동       :done, p2-1, after p1-4, 3d
-    RAG Chain 구현      :done, p2-2, after p2-1, 4d
-    프롬프트 엔지니어링 :done, p2-3, after p2-2, 3d
-    속성 추출 시스템    :done, p2-4, after p2-3, 4d
-
-    section Phase 3: Agent System
-    LangGraph 구조      :done, p3-1, after p2-4, 4d
-    에이전트 분리       :done, p3-2, after p3-1, 3d
-    Intent Classifier   :done, p3-3, after p3-2, 2d
-    가짜 리뷰 필터      :done, p3-4, after p3-3, 3d
-
-    section Phase 4: UI
-    Streamlit 대시보드  :done, p4-1, after p3-4, 4d
-    쇼핑몰 스타일 UI    :done, p4-2, after p4-1, 5d
-
-    section Phase 5: Deploy
-    Docker & EC2        :done, p5-1, after p4-2, 3d
-    테스트 & 문서화     :done, p5-2, after p5-1, 3d
-```
-
-### Phase 1: Foundation ✅ (100% 완료)
-
-- [x] 프로젝트 환경 설정 (Python, Dependencies)
-- [x] Playwright 기반 크롤러 개발 (봇 탐지로 제한적)
-- [x] AI Hub 공개 데이터셋 통합 (250K+ 이커머스 리뷰)
-- [x] 리뷰 데이터 전처리 파이프라인 구축
-
-### Phase 2: Core RAG ✅ (100% 완료)
-
-- [x] ChromaDB 연동 및 임베딩 파이프라인
-- [x] LangChain 기반 RAG 체인 구현
-- [x] 프롬프트 엔지니어링 (Q&A, 요약, 비교, 감성분석)
-- [x] LLM 기반 속성 추출 시스템 (27개 테스트 통과)
-
-### Phase 3: Agent System ✅ (100% 완료)
-
-- [x] LangGraph 기반 멀티 에이전트 구조
-- [x] 요약 / Q&A / 비교 에이전트 분리
-- [x] Agent Router (Intent Classifier) 구현
-- [x] 가짜 리뷰 필터링 시스템
-
-### Phase 4: UI & Polish ✅ (100% 완료)
-
-- [x] Streamlit 대시보드 개발 (기본 UI)
-- [x] 쇼핑몰 스타일 UI 개편 (제품 목록 → 상세 → Q&A)
-- [x] 카테고리 대분류/소분류 계층 필터
-- [x] 제품별 RAG Q&A 기능
-
-### Phase 5: Deployment ✅ (100% 완료)
-
-- [x] Docker 컨테이너화
-- [x] AWS EC2 배포
-- [x] 테스트 커버리지 44% 달성 (256개 테스트)
-
----
-
-## 11. 리스크 및 대응 방안
+## 10. 리스크 및 대응 방안
 
 | 리스크                 | 영향도 | 대응 방안                                                   | 현재 상태 |
 | ---------------------- | ------ | ----------------------------------------------------------- | --------- |
-| **크롤링 차단**        | High   | 공개 데이터셋(AI Hub) 활용으로 전환, 향후 API 파트너십 고려 | 🔄 진행중 |
-| **API 비용 증가**      | Medium | GPT-4o-mini 사용, 캐싱 전략, 토큰 최적화                    | 🔄 진행중 |
-| **Hallucination**      | High   | RAG 아키텍처 필수 적용, 출처 명시, 검증 로직 추가           | 🔄 진행중 |
-| **응답 지연**          | Medium | Streaming 적용, 비동기 처리, 캐싱                           | ⏳ 대기   |
-| **데이터 다양성 부족** | Low    | AI Hub 데이터셋이 5개 카테고리 지원으로 해결                | ✅ 해결   |
+| **크롤링 차단**        | High   | 공개 데이터셋(AI Hub) 활용으로 전환                         | ✅ 해결   |
+| **API 비용 증가**      | Medium | GPT-4o-mini 사용, 토큰 최적화                               | ✅ 해결   |
+| **Hallucination**      | High   | RAG 아키텍처 적용, 출처 명시, 근거 리뷰 표시                | ✅ 해결   |
+| **응답 지연**          | Medium | Streaming 적용, 로딩 스피너 UX                              | ✅ 해결   |
+| **데이터 다양성 부족** | Low    | AI Hub 데이터셋 5개 카테고리 (180K+ 리뷰)                   | ✅ 해결   |
 
 ---
 
-## 12. 참고 자료
+## 11. 참고 자료
 
 - [LangChain Documentation](https://python.langchain.com/docs/)
 - [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
