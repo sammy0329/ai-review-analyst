@@ -29,7 +29,6 @@ from src.database import (
     init_db, add_review, get_reviews_by_product, migrate_aihub_product,
     get_or_create_product, delete_review, get_review_aspects_by_text,
     get_product_by_name, get_all_products as db_get_products,
-    get_sentiment_stats
 )
 from src.pipeline.aihub_loader import AIHubDataLoader, Product
 from src.pipeline.aspect_extractor import create_aspect_extractor
