@@ -362,7 +362,7 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-/* 화면 깜빡임 방지 */
+/* 화면 깜빡임 및 투명도 변경 방지 */
 html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
     background-color: #ffffff !important;
 }
@@ -375,6 +375,19 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
 }
 .main .block-container {
     background-color: #ffffff !important;
+}
+/* rerun 중 투명도 변경 방지 */
+.stApp * {
+    opacity: 1 !important;
+    transition: none !important;
+}
+/* 요소 숨김 시에도 레이아웃 유지 */
+[data-stale="true"] {
+    opacity: 1 !important;
+}
+/* fragment 업데이트 시 다른 영역 투명도 유지 */
+.element-container, .stMarkdown, .stExpander, [data-testid="stVerticalBlock"] {
+    opacity: 1 !important;
 }
 
 /* 모바일 반응형 (768px 이하) */
