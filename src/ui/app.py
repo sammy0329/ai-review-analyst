@@ -592,8 +592,8 @@ def load_products(category: str):
             # ProductRecord를 Product 객체로 변환
             products = []
             for p in product_records:
-                # 카테고리 필터 적용
-                if cat_filter and p.main_category != cat_filter:
+                # 카테고리 필터 적용 (대분류 기준)
+                if cat_filter and p.category != cat_filter:
                     continue
 
                 # 리뷰 3개 이상인 제품만 포함
@@ -608,8 +608,8 @@ def load_products(category: str):
 
                     product = Product(
                         name=p.name,
-                        category=p.category,  # 소분류
-                        main_category=p.main_category,  # 대분류
+                        category=p.category,  # 대분류 (가전, 패션 등)
+                        main_category=p.main_category,  # 소분류 (영상/음향가전 등)
                         review_count=p.review_count,
                         avg_rating=p.avg_rating,
                         sentiment_distribution=sentiment_dist,
