@@ -909,29 +909,26 @@ def render_product_detail_content(product: Product):
                     # AI 답변
                     with st.chat_message("assistant"):
                         if chat['answer'] == "💭 답변 준비중...":
-                            # 로딩 애니메이션 표시 (세로 가운데 정렬)
+                            # 로딩 애니메이션 표시 (텍스트 뒤에 스피너, 세로 가운데 정렬)
                             st.markdown(
                                 """
                                 <style>
                                 .loading-container {
-                                    display: flex;
+                                    display: inline-flex;
                                     align-items: center;
-                                    min-height: 24px;
-                                    gap: 10px;
+                                    gap: 8px;
                                 }
                                 .loading-spinner {
-                                    width: 18px;
-                                    height: 18px;
-                                    border: 2.5px solid #e0e0e0;
-                                    border-top: 2.5px solid #1565c0;
+                                    width: 14px;
+                                    height: 14px;
+                                    border: 2px solid #e0e0e0;
+                                    border-top: 2px solid #1565c0;
                                     border-radius: 50%;
                                     animation: spin 0.8s linear infinite;
-                                    flex-shrink: 0;
                                 }
                                 .loading-label {
-                                    color: #666;
+                                    color: #555;
                                     font-size: 0.95em;
-                                    line-height: 1;
                                 }
                                 @keyframes spin {
                                     0% { transform: rotate(0deg); }
@@ -939,8 +936,8 @@ def render_product_detail_content(product: Product):
                                 }
                                 </style>
                                 <div class="loading-container">
+                                    <span class="loading-label">리뷰 분석중</span>
                                     <div class="loading-spinner"></div>
-                                    <span class="loading-label">리뷰 분석중...</span>
                                 </div>
                                 """,
                                 unsafe_allow_html=True
