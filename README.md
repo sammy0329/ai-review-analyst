@@ -13,6 +13,12 @@
 ![SQLite](https://img.shields.io/badge/SQLite-Metadata_DB-003B57?style=flat-square&logo=sqlite&logoColor=white)
 ![AIHub](https://img.shields.io/badge/Dataset-AI_Hub_250K-yellow?style=flat-square)
 
+### 🎬 Demo Video
+
+[![AI Review Analyst Demo](https://img.youtube.com/vi/WWrGmhjnR6Q/maxresdefault.jpg)](https://youtu.be/WWrGmhjnR6Q)
+
+> 👆 클릭하면 YouTube에서 데모 영상을 볼 수 있습니다.
+
 ---
 
 ## Project Overview
