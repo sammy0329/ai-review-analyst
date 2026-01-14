@@ -2005,6 +2005,9 @@ def render_product_qa(product: Product):
                     "sources": sources,  # 출처도 저장
                 })
 
+                # 입력창 초기화를 위해 rerun
+                st.rerun()
+
             except Exception as e:
                 show_error(e, "답변 생성")
 
