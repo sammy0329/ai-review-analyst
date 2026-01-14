@@ -29,6 +29,7 @@ from src.database import (
     init_db, add_review, get_reviews_by_product, migrate_aihub_product,
     get_or_create_product, delete_review, get_review_aspects_by_text,
     get_product_by_name, get_all_products as db_get_products,
+    get_review_count,
 )
 from src.pipeline.aihub_loader import AIHubDataLoader, Product
 from src.pipeline.aspect_extractor import create_aspect_extractor
@@ -597,13 +598,21 @@ def load_products(category: str):
 
                 # 리뷰 3개 이상인 제품만 포함
                 if p.review_count >= 3:
+                    # 실제 감정 분포 조회
+                    sentiment_stats = get_review_count(p.name)
+                    sentiment_dist = {
+                        "긍정": sentiment_stats.get("긍정", 0),
+                        "중립": sentiment_stats.get("중립", 0),
+                        "부정": sentiment_stats.get("부정", 0),
+                    }
+
                     product = Product(
                         name=p.name,
                         category=p.category,  # 소분류
                         main_category=p.main_category,  # 대분류
                         review_count=p.review_count,
                         avg_rating=p.avg_rating,
-                        sentiment_distribution={"긍정": 0, "중립": 0, "부정": 0},
+                        sentiment_distribution=sentiment_dist,
                         top_aspects=[],
                         reviews=[],
                     )
