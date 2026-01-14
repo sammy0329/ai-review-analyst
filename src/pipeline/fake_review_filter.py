@@ -287,7 +287,8 @@ class FakeReviewFilter:
 
         elif rating <= 1.5:
             # 낮은 평점인데 긍정적 키워드
-            positive_patterns = [r"좋아요", r"만족", r"추천", r"최고"]
+            # "추천 받았다"는 긍정이 아니므로 "추천해", "추천합니다" 등으로 구체화
+            positive_patterns = [r"좋아요", r"만족", r"추천해", r"추천합니다", r"추천드", r"강추", r"최고"]
             has_positive = any(
                 re.search(p, text, re.IGNORECASE) for p in positive_patterns
             )

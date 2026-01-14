@@ -42,6 +42,142 @@ logger = get_logger(__name__)
 
 
 # =============================================================================
+# 속성 분석 헬퍼 함수
+# =============================================================================
+
+def analyze_product_aspects(product: Product) -> dict:
+    """제품 리뷰에서 속성별 감정 분석.
+
+    Args:
+        product: 분석할 제품
+
+    Returns:
+        {
+            "strengths": [(속성명, 긍정수, 긍정비율), ...],  # 강점 (긍정 많은 속성)
+            "weaknesses": [(속성명, 부정수, 부정비율), ...],  # 약점 (부정 많은 속성)
+            "aspect_stats": {속성명: {"긍정": n, "부정": n, "중립": n}, ...}
+        }
+    """
+    from collections import defaultdict
+
+    # 속성별 감정 집계
+    aspect_stats = defaultdict(lambda: {"긍정": 0, "부정": 0, "중립": 0})
+    polarity_map = {1: "긍정", 0: "중립", -1: "부정"}
+
+    for review in product.reviews:
+        for aspect in review.aspects:
+            aspect_name = aspect.get("Aspect", "")
+            polarity_raw = aspect.get("SentimentPolarity", 0)
+            # SentimentPolarity가 문자열일 수 있으므로 정수로 변환
+            try:
+                polarity = int(polarity_raw)
+            except (ValueError, TypeError):
+                polarity = 0
+
+            if aspect_name:
+                label = polarity_map.get(polarity, "중립")
+                aspect_stats[aspect_name][label] += 1
+
+    # 강점 추출 (긍정 비율 높고, 언급 횟수 5회 이상)
+    strengths = []
+    weaknesses = []
+
+    for aspect_name, counts in aspect_stats.items():
+        total = counts["긍정"] + counts["부정"] + counts["중립"]
+        if total < 3:  # 언급 너무 적으면 제외
+            continue
+
+        pos_ratio = counts["긍정"] / total * 100 if total > 0 else 0
+        neg_ratio = counts["부정"] / total * 100 if total > 0 else 0
+
+        if pos_ratio >= 60 and counts["긍정"] >= 3:
+            strengths.append((aspect_name, counts["긍정"], pos_ratio))
+
+        if neg_ratio >= 40 and counts["부정"] >= 2:
+            weaknesses.append((aspect_name, counts["부정"], neg_ratio))
+
+    # 긍정/부정 비율 기준 정렬
+    strengths.sort(key=lambda x: (-x[2], -x[1]))  # 비율 높은 순, 개수 많은 순
+    weaknesses.sort(key=lambda x: (-x[2], -x[1]))
+
+    return {
+        "strengths": strengths[:5],  # 상위 5개
+        "weaknesses": weaknesses[:3],  # 상위 3개
+        "aspect_stats": dict(aspect_stats),
+    }
+
+
+def generate_verdict_reasons(product: Product, analysis: dict) -> tuple[str, str]:
+    """분석 결과를 기반으로 추천 판단과 이유 생성.
+
+    Args:
+        product: 제품 정보
+        analysis: analyze_product_aspects() 결과
+
+    Returns:
+        (verdict, verdict_detail) 튜플
+    """
+    sentiment_ratio = product.get_sentiment_ratio()
+    avg_rating = product.avg_rating
+    pos_ratio = sentiment_ratio["긍정"]
+    neg_ratio = sentiment_ratio["부정"]
+
+    strengths = analysis["strengths"]
+    weaknesses = analysis["weaknesses"]
+
+    # 강점/약점 텍스트 생성
+    strength_texts = []
+    for name, count, ratio in strengths[:3]:
+        strength_texts.append(f"**{name}** 만족도 높음 ({ratio:.0f}%)")
+
+    weakness_texts = []
+    for name, count, ratio in weaknesses[:2]:
+        weakness_texts.append(f"**{name}** 불만 있음 ({ratio:.0f}%)")
+
+    # 판정 기준
+    if avg_rating >= 4.0 and pos_ratio >= 60:
+        verdict = "👍 추천해요!"
+        verdict_color = "success"
+
+        if strength_texts:
+            detail = "✅ " + " | ".join(strength_texts)
+        else:
+            detail = f"✅ 긍정 리뷰 {pos_ratio:.0f}%, 평점 {avg_rating:.1f}점"
+
+        if weakness_texts:
+            detail += "\n\n⚠️ 참고: " + ", ".join(weakness_texts)
+
+    elif avg_rating >= 3.5 or pos_ratio >= 50:
+        verdict = "🤔 괜찮아요"
+        verdict_color = "info"
+
+        details = []
+        if strength_texts:
+            details.append("✅ " + " | ".join(strength_texts[:2]))
+        if weakness_texts:
+            details.append("⚠️ " + " | ".join(weakness_texts[:2]))
+
+        if details:
+            detail = "\n\n".join(details)
+        else:
+            detail = f"긍정 {pos_ratio:.0f}% / 부정 {neg_ratio:.0f}%로 평가가 엇갈려요"
+
+    else:
+        verdict = "⚠️ 신중히 고려하세요"
+        verdict_color = "warning"
+
+        if weakness_texts:
+            detail = "❌ " + " | ".join(weakness_texts)
+        else:
+            detail = f"부정 리뷰 {neg_ratio:.0f}%로 불만이 많아요"
+
+        if strength_texts:
+            detail += "\n\n✅ 그래도: " + strength_texts[0]
+
+    return verdict, verdict_color, detail
+
+
+# =============================================================================
 # 다운로드 헬퍼 함수
 # =============================================================================
 
@@ -703,27 +839,14 @@ def render_product_detail():
 
 def render_product_detail_content(product: Product):
     """소비자 모드 - 제품 상세 페이지 (간단한 구매 결정 도움)."""
-    sentiment_ratio = product.get_sentiment_ratio()
-
     # 한눈에 보는 평가 카드
     st.subheader("📋 한눈에 보기")
 
-    # 전체 평가 요약
-    avg_rating = product.avg_rating
-    pos_ratio = sentiment_ratio["긍정"]
+    # 속성 기반 분석
+    analysis = analyze_product_aspects(product)
+    verdict, verdict_color, verdict_detail = generate_verdict_reasons(product, analysis)
 
-    if avg_rating >= 4.0 and pos_ratio >= 60:
-        verdict = "👍 추천해요!"
-        verdict_color = "success"
-        verdict_detail = "평점도 높고 긍정 리뷰가 많아요"
-    elif avg_rating >= 3.5 or pos_ratio >= 50:
-        verdict = "🤔 괜찮아요"
-        verdict_color = "info"
-        verdict_detail = "전반적으로 무난한 제품이에요"
-    else:
-        verdict = "⚠️ 신중히 고려하세요"
-        verdict_color = "warning"
-        verdict_detail = "부정적인 리뷰가 있어요"
+    avg_rating = product.avg_rating
 
     # 평가 카드
     eval_col1, eval_col2 = st.columns([1, 2])
