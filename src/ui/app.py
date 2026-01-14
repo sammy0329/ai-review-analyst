@@ -101,7 +101,7 @@ def get_aspects_json(product: Product) -> str:
                 continue
 
             # 속성별 감정 (SentimentPolarity 사용, 없으면 리뷰 전체 감정 사용)
-            polarity = asp_data.get("SentimentPolarity", review.general_polarity)
+            polarity = int(asp_data.get("SentimentPolarity", review.general_polarity))
             polarity_map = {1: "positive", 0: "neutral", -1: "negative"}
             sentiment = polarity_map.get(polarity, "neutral")
 
@@ -1475,8 +1475,8 @@ def render_compare_products():
                     all_aspects.add(aspect_name)
                     aspect_counter[aspect_name] += 1
 
-                    # 감정별 집계
-                    polarity = aspect.get("SentimentPolarity", 0)
+                    # 감정별 집계 (AI Hub 데이터는 문자열로 저장)
+                    polarity = int(aspect.get("SentimentPolarity", 0))
                     if aspect_name not in aspect_sentiment:
                         aspect_sentiment[aspect_name] = {"긍정": 0, "중립": 0, "부정": 0}
 
