@@ -28,7 +28,7 @@ from src.core.exceptions import ReviewAnalystError, RateLimitError, Authenticati
 from src.database import (
     init_db, add_review, get_reviews_by_product, migrate_aihub_product,
     get_or_create_product, delete_review, get_review_aspects_by_text,
-    get_product_by_name, get_products as db_get_products,
+    get_product_by_name, get_all_products as db_get_products,
     get_sentiment_stats
 )
 from src.pipeline.aihub_loader import AIHubDataLoader, Product
@@ -586,22 +586,26 @@ def load_products(category: str):
 
             cat_filter = None if category == "전체" else category
 
-            # SQLite에서 제품 목록 조회
-            product_dicts = db_get_products(category=cat_filter)
+            # SQLite에서 전체 제품 목록 조회
+            product_records = db_get_products()
 
-            # dict를 Product 객체로 변환
+            # ProductRecord를 Product 객체로 변환
             products = []
-            for p in product_dicts:
+            for p in product_records:
+                # 카테고리 필터 적용
+                if cat_filter and p.main_category != cat_filter:
+                    continue
+
                 # 리뷰 3개 이상인 제품만 포함
-                if p.get("review_count", 0) >= 3:
+                if p.review_count >= 3:
                     product = Product(
-                        id=str(p["id"]),
-                        name=p["name"],
-                        category=p.get("category", ""),
-                        sub_category=p.get("subcategory", ""),
+                        id=str(p.id),
+                        name=p.name,
+                        category=p.main_category,
+                        sub_category=p.category,
                         reviews=[],  # 리뷰는 상세 페이지에서 로드
-                        avg_rating=p.get("avg_rating", 0.0),
-                        review_count=p.get("review_count", 0),
+                        avg_rating=p.avg_rating,
+                        review_count=p.review_count,
                     )
                     products.append(product)
 
