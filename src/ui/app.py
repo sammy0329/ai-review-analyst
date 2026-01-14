@@ -1506,6 +1506,7 @@ def highlight_aspect_in_text(full_text: str, aspect_text: str, sentiment: str) -
         HTML 형식의 하이라이트된 텍스트
     """
     import html
+    import re
 
     # 감정별 스타일
     styles = {
@@ -1516,18 +1517,56 @@ def highlight_aspect_in_text(full_text: str, aspect_text: str, sentiment: str) -
 
     style = styles.get(sentiment, styles["중립"])
 
-    # HTML 이스케이프
-    escaped_full = html.escape(full_text)
-    escaped_aspect = html.escape(aspect_text)
+    if not aspect_text:
+        return html.escape(full_text)
 
-    # 하이라이트 적용
-    if escaped_aspect and escaped_aspect in escaped_full:
+    # 공백 정규화 (연속 공백 → 단일 공백)
+    normalized_full = re.sub(r'\s+', ' ', full_text.strip())
+    normalized_aspect = re.sub(r'\s+', ' ', aspect_text.strip())
+
+    # HTML 이스케이프
+    escaped_full = html.escape(normalized_full)
+    escaped_aspect = html.escape(normalized_aspect)
+
+    # 1. 정확한 매칭 시도
+    if escaped_aspect in escaped_full:
         highlighted = escaped_full.replace(
             escaped_aspect,
             f'<span style="{style}">{escaped_aspect}</span>',
-            1  # 첫 번째 매칭만
+            1
         )
         return highlighted
+
+    # 2. 공백 무시 유연 매칭 (aspect의 공백을 \s*로 변환)
+    pattern_str = r'\s*'.join(re.escape(c) for c in normalized_aspect if c.strip())
+    try:
+        match = re.search(pattern_str, escaped_full, re.IGNORECASE)
+        if match:
+            matched_text = match.group()
+            highlighted = escaped_full[:match.start()] + f'<span style="{style}">{matched_text}</span>' + escaped_full[match.end():]
+            return highlighted
+    except re.error:
+        pass
+
+    # 3. 핵심 키워드 매칭 (aspect에서 2자 이상 단어 추출하여 매칭)
+    keywords = [w for w in re.findall(r'[가-힣]{2,}', normalized_aspect)]
+    if keywords:
+        # 가장 긴 키워드부터 시도
+        keywords.sort(key=len, reverse=True)
+        for kw in keywords[:3]:  # 최대 3개
+            if kw in escaped_full:
+                # 키워드가 포함된 절/구 찾기
+                pattern = f'([^.!?]*{re.escape(kw)}[^.!?]*)'
+                match = re.search(pattern, escaped_full)
+                if match:
+                    matched_text = match.group(1).strip()
+                    if len(matched_text) <= 100:  # 너무 긴 매칭 방지
+                        highlighted = escaped_full.replace(
+                            matched_text,
+                            f'<span style="{style}">{matched_text}</span>',
+                            1
+                        )
+                        return highlighted
 
     return escaped_full
 
