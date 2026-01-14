@@ -10,6 +10,7 @@
 ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini-412991?style=flat-square&logo=openai&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-App-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)
 ![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector_DB-blue?style=flat-square)
+![SQLite](https://img.shields.io/badge/SQLite-Metadata_DB-003B57?style=flat-square&logo=sqlite&logoColor=white)
 ![AIHub](https://img.shields.io/badge/Dataset-AI_Hub_250K-yellow?style=flat-square)
 
 ---
