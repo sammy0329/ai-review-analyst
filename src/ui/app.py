@@ -941,30 +941,51 @@ def render_product_detail_content(product: Product):
                             with st.popover(f"📚 근거 리뷰 ({len(sources)}개)"):
                                 st.caption("💡 AI가 답변을 생성할 때 참고한 리뷰들입니다")
 
-                                # 질문에서 키워드 추출 (하이라이트용)
+                                # AI 응답에서 인용 문구 추출 (하이라이트용)
                                 import re
+                                answer = chat['answer']
                                 question = chat['question']
-                                # 불용어 제외하고 2자 이상 키워드 추출
+
+                                # 1. AI 응답에서 따옴표 안의 문구 추출
+                                quoted_phrases = re.findall(r'["""]([^"""]+)["""]', answer)
+                                # 짧은 문구만 필터 (3자 이상, 50자 이하)
+                                quoted_phrases = [p.strip() for p in quoted_phrases if 3 <= len(p.strip()) <= 50]
+
+                                # 2. 질문에서 키워드도 추출 (fallback용)
                                 stopwords = {"이", "가", "은", "는", "을", "를", "의", "에", "에서", "로", "으로", "와", "과", "도", "만", "이나", "나", "고", "하고", "해서", "어떤", "어떻", "뭐", "뭔", "좀", "잘", "더", "많이", "정말", "진짜", "너무", "아주", "매우", "제품", "상품", "이거", "저거", "그거", "있", "없", "하", "되", "같", "인가요", "인가", "예요", "에요", "나요", "까요"}
                                 keywords = [w for w in re.findall(r'[가-힣]+', question) if len(w) >= 2 and w not in stopwords]
 
-                                def highlight_sentences(text: str, keywords: list) -> str:
-                                    """키워드가 포함된 부분을 하이라이트."""
-                                    if not keywords:
-                                        return text
-                                    # 키워드 주변 문맥을 하이라이트 (키워드 앞뒤로 적절히 잘라서)
+                                def highlight_text(text: str, phrases: list, keywords: list) -> str:
+                                    """인용 문구 또는 키워드를 하이라이트."""
                                     result = text
-                                    for kw in keywords:
-                                        if kw not in result:
-                                            continue
-                                        # 키워드가 포함된 절/구 찾기 (앞뒤 공백이나 구두점까지)
-                                        # 패턴: 키워드 앞 10자 + 키워드 + 키워드 뒤 20자 (구두점이나 끝까지)
-                                        pattern = f'([^.!?]*{re.escape(kw)}[^.!?]*[.!?]?)'
-                                        matches = re.findall(pattern, result)
-                                        for match in matches:
-                                            if match.strip():
-                                                highlighted = f'<mark style="background-color: #fff3cd; padding: 2px 4px; border-radius: 4px;">{match.strip()}</mark>'
-                                                result = result.replace(match, highlighted, 1)
+                                    highlighted_any = False
+
+                                    # 1. 인용 문구 정확히 하이라이트
+                                    for phrase in phrases:
+                                        if phrase in result:
+                                            result = result.replace(
+                                                phrase,
+                                                f'<mark style="background-color: #fff3cd; padding: 2px 4px; border-radius: 4px;">{phrase}</mark>',
+                                                1
+                                            )
+                                            highlighted_any = True
+
+                                    # 2. 인용 문구로 하이라이트 안 됐으면 키워드로 시도
+                                    if not highlighted_any and keywords:
+                                        for kw in keywords:
+                                            if kw in result:
+                                                # 키워드가 포함된 짧은 구절 찾기
+                                                pattern = f'([가-힣]*{re.escape(kw)}[가-힣]*)'
+                                                match = re.search(pattern, result)
+                                                if match:
+                                                    matched = match.group(1)
+                                                    result = result.replace(
+                                                        matched,
+                                                        f'<mark style="background-color: #fff3cd; padding: 2px 4px; border-radius: 4px;">{matched}</mark>',
+                                                        1
+                                                    )
+                                                    break
+
                                     return result
 
                                 # 감정/속성 색상 매핑
@@ -1009,7 +1030,7 @@ def render_product_detail_content(product: Product):
                                     suspicious_label = " <span style='color: orange; font-weight: bold;'>[의심]</span>" if is_suspicious else ""
 
                                     # 키워드 하이라이트 적용
-                                    highlighted_text = highlight_sentences(text, keywords)
+                                    highlighted_text = highlight_text(text, quoted_phrases, keywords)
 
                                     # 속성 태그 HTML
                                     aspect_tags_html = ""
