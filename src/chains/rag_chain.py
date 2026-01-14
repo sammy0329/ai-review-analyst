@@ -8,8 +8,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Iterator
 
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.schema import Document
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_openai import ChatOpenAI
