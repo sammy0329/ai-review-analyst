@@ -27,7 +27,8 @@ from src.core.logging import get_logger, setup_logging
 from src.core.exceptions import ReviewAnalystError, RateLimitError, AuthenticationError
 from src.database import (
     init_db, add_review, get_reviews_by_product, migrate_aihub_product,
-    get_or_create_product, delete_review
+    get_or_create_product, delete_review, get_review_aspects_by_text,
+    get_product_by_name
 )
 from src.pipeline.aihub_loader import AIHubDataLoader, Product
 from src.pipeline.aspect_extractor import create_aspect_extractor
@@ -870,64 +871,81 @@ def render_product_detail_content(product: Product):
 
     st.markdown("---")
 
-    # 간단 Q&A
+    # 간단 Q&A (fragment로 분리하여 독립적 업데이트)
     st.subheader("💡 궁금한 점이 있으신가요?")
     st.caption("리뷰를 기반으로 AI가 답변해드려요")
 
-    # 자주 묻는 질문 버튼
-    faq_col1, faq_col2, faq_col3 = st.columns(3)
+    @st.fragment
+    def render_qa_fragment():
+        """Q&A 섹션 - fragment로 분리하여 아래 섹션에 영향 없이 업데이트."""
+        # 자주 묻는 질문 버튼
+        faq_col1, faq_col2, faq_col3 = st.columns(3)
 
-    with faq_col1:
-        if st.button("📦 배송은 어때요?", use_container_width=True, key="faq_delivery"):
-            st.session_state.b2c_question = "배송은 어떤가요? 빠른 편인가요?"
+        with faq_col1:
+            if st.button("📦 배송은 어때요?", use_container_width=True, key="faq_delivery"):
+                st.session_state.b2c_question = "배송은 어떤가요? 빠른 편인가요?"
 
-    with faq_col2:
-        if st.button("💰 가성비 좋아요?", use_container_width=True, key="faq_value"):
-            st.session_state.b2c_question = "가성비가 좋은 제품인가요?"
+        with faq_col2:
+            if st.button("💰 가성비 좋아요?", use_container_width=True, key="faq_value"):
+                st.session_state.b2c_question = "가성비가 좋은 제품인가요?"
 
-    with faq_col3:
-        if st.button("⚠️ 단점은 뭐예요?", use_container_width=True, key="faq_cons"):
-            st.session_state.b2c_question = "이 제품의 주요 단점이 뭔가요?"
+        with faq_col3:
+            if st.button("⚠️ 단점은 뭐예요?", use_container_width=True, key="faq_cons"):
+                st.session_state.b2c_question = "이 제품의 주요 단점이 뭔가요?"
 
-    # 직접 질문 입력
-    user_question = st.text_input(
-        "직접 질문하기",
-        placeholder="예: 사이즈가 작은 편인가요?",
-        key="b2c_user_question"
-    )
+        # 직접 질문 입력
+        user_question = st.text_input(
+            "직접 질문하기",
+            placeholder="예: 사이즈가 작은 편인가요?",
+            key="b2c_user_question"
+        )
 
-    # FAQ 버튼 또는 직접 입력 질문 처리
-    question_to_ask = getattr(st.session_state, "b2c_question", None) or user_question
+        # FAQ 버튼 또는 직접 입력 질문 처리
+        question_to_ask = getattr(st.session_state, "b2c_question", None) or user_question
 
-    if question_to_ask:
-        if "b2c_question" in st.session_state:
-            del st.session_state.b2c_question
+        # Q&A 처리 - 새 질문 감지 및 처리
+        is_new_question = (
+            question_to_ask
+            and question_to_ask != st.session_state.get("b2c_last_question")
+            and not st.session_state.get("b2c_processing")
+        )
 
-        try:
-            rag_chain = get_or_create_product_rag_chain(product)
-            if rag_chain:
-                st.markdown("#### 🤖 AI 답변")
+        if is_new_question:
+            # 새 질문 처리 시작
+            st.session_state.b2c_processing = True
+            if "b2c_question" in st.session_state:
+                del st.session_state.b2c_question
 
-                # 스트리밍 응답 + 출처
-                answer_container = st.empty()
-                full_answer = ""
+            st.markdown("#### 🤖 AI 답변")
+            with st.spinner(f"🔍 \"{question_to_ask}\" 에 대해 AI가 리뷰를 분석하고 있어요..."):
+                try:
+                    rag_chain = get_or_create_product_rag_chain(product)
+                    if rag_chain:
+                        response = rag_chain.query_with_sources(question_to_ask)
+                        st.session_state.b2c_answer = response["answer"]
+                        st.session_state.b2c_sources = response.get("sources", [])
+                    else:
+                        st.session_state.b2c_answer = "RAG 시스템 초기화 실패"
+                        st.session_state.b2c_sources = []
+                except Exception as e:
+                    st.session_state.b2c_answer = f"오류: {e}"
+                    st.session_state.b2c_sources = []
 
-                with st.spinner("리뷰를 분석하고 있어요..."):
-                    response = rag_chain.query_with_sources(question_to_ask)
-                    full_answer = response.answer
+            # 처리 완료
+            st.session_state.b2c_last_question = question_to_ask
+            st.session_state.b2c_processing = False
 
-                answer_container.success(full_answer)
+        # 저장된 답변 표시
+        if st.session_state.get("b2c_answer"):
+            st.markdown("#### 🤖 AI 답변")
+            st.success(st.session_state.b2c_answer)
 
-                # 출처 리뷰 표시
-                if response.source_documents:
-                    with st.expander(f"📚 참고한 리뷰 ({len(response.source_documents)}개)"):
-                        for i, doc in enumerate(response.source_documents[:5]):
-                            text = doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
-                            st.markdown(f"**리뷰 {i+1}:** {text}")
-                            if i < len(response.source_documents) - 1:
-                                st.markdown("---")
-        except Exception as e:
-            st.error(f"답변 생성 중 오류: {e}")
+            sources = st.session_state.get("b2c_sources", [])
+            if sources:
+                render_qa_sources(sources, key_prefix="faq")
+
+    # Q&A fragment 실행
+    render_qa_fragment()
 
     st.markdown("---")
 
@@ -1048,11 +1066,11 @@ def render_product_detail_content(product: Product):
                     sentiment_color = {"긍정": "#1976D2", "중립": "#388E3C", "부정": "#D32F2F"}.get(review_data["sentiment"], "#666")
                     border_color = {"긍정": "#bbdefb", "중립": "#c8e6c9", "부정": "#ffcdd2"}.get(review_data["sentiment"], "#ddd")
 
-                    # 별점 (100점 → 5점)
+                    # 별점 (100점 → 5점) - "⭐ 5.0" 형태로 통일
                     r_score = review_data.get("review_score", 0)
                     if r_score > 0:
                         star_count = min(5, max(1, round(r_score / 20)))
-                        stars_str = "⭐" * star_count + " "
+                        stars_str = f"⭐ {star_count} "
                     else:
                         stars_str = ""
 
@@ -1162,12 +1180,12 @@ def render_product_detail_content(product: Product):
     positive_reviews = trusted_positive[:2]
     negative_reviews = trusted_negative[:2]
 
-    # 별점 변환 헬퍼 (100점 → 5점)
+    # 별점 변환 헬퍼 (100점 → 5점) - "⭐ 5" 형태로 통일
     def get_stars_from_score(score: int) -> str:
         if score <= 0:
             return ""
         star_count = min(5, max(1, round(score / 20)))
-        return "⭐" * star_count + " "
+        return f"⭐ {star_count} "
 
     # 속성 분석 HTML 생성 헬퍼
     def build_aspects_html(aspects: list) -> str:
@@ -1490,6 +1508,110 @@ def render_product_aspects(product: Product):
                     )
 
 
+def render_qa_sources(sources: list[dict], key_prefix: str = "current"):
+    """Q&A 근거 리뷰 표시 (개선된 버전 + 속성 분석).
+
+    Args:
+        sources: 출처 리뷰 목록
+        key_prefix: expander 키 중복 방지용 접두사
+    """
+    if not sources:
+        return
+
+    # 감정 색상 매핑
+    sentiment_colors = {
+        "긍정": "#1565c0",
+        "부정": "#c62828",
+        "중립": "#2e7d32",
+    }
+
+    # 속성 감정 색상 (태그용)
+    aspect_sentiment_colors = {
+        "1": "#1565c0",   # 긍정 - 파랑
+        1: "#1565c0",
+        "-1": "#c62828",  # 부정 - 빨강
+        -1: "#c62828",
+        "0": "#666",      # 중립 - 회색
+        0: "#666",
+    }
+
+    with st.expander(f"📚 근거 리뷰 ({len(sources)}개)", expanded=False):
+        st.caption("💡 AI가 답변을 생성할 때 참고한 리뷰들입니다")
+
+        for i, source in enumerate(sources, 1):
+            text = source.get("text", "")
+            rating = source.get("rating")
+
+            # 가짜 리뷰 검사
+            fake_result = check_review_text(text, rating)
+            is_suspicious = fake_result.is_suspicious
+
+            # DB에서 속성 분석 조회
+            aspects = get_review_aspects_by_text(text)
+
+            # 감정 추정 (별점 기반)
+            if rating:
+                if rating >= 4:
+                    sentiment = "긍정"
+                    emoji = "😊"
+                elif rating <= 2:
+                    sentiment = "부정"
+                    emoji = "😞"
+                else:
+                    sentiment = "중립"
+                    emoji = "😐"
+            else:
+                sentiment = "중립"
+                emoji = "😐"
+
+            color = sentiment_colors.get(sentiment, "#666")
+
+            # 별점 표시
+            rating_display = f"⭐ {rating}" if rating else "평점 없음"
+
+            # 의심 라벨
+            suspicious_label = " <span style='color: orange; font-weight: bold;'>[의심]</span>" if is_suspicious else ""
+
+            # 속성 태그 HTML 생성
+            aspect_tags_html = ""
+            if aspects:
+                tags = []
+                for asp in aspects[:5]:  # 최대 5개까지만 표시
+                    asp_name = asp.get("Aspect", "")
+                    asp_polarity = asp.get("SentimentPolarity", 0)
+                    asp_color = aspect_sentiment_colors.get(asp_polarity, "#666")
+                    if asp_name:
+                        tags.append(
+                            f'<span style="display: inline-block; padding: 2px 8px; margin: 2px; '
+                            f'border-radius: 12px; background-color: {asp_color}; color: white; '
+                            f'font-size: 0.75em;">{asp_name}</span>'
+                        )
+                if tags:
+                    aspect_tags_html = f'<div style="margin-top: 8px;">{"".join(tags)}</div>'
+
+            # HTML 렌더링
+            st.markdown(
+                f"""
+                <div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid {color};">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-weight: bold; color: #333;">[{i}] {emoji} {sentiment}</span>
+                        <span style="font-size: 0.85em; color: #666;">{rating_display}{suspicious_label}</span>
+                    </div>
+                    <div style="line-height: 1.6; color: #444;">
+                        {text}
+                    </div>
+                    {aspect_tags_html}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            # 의심 사유 표시
+            if is_suspicious and fake_result.reasons:
+                reason_text = ", ".join([r.value for r in fake_result.reasons])
+                st.caption(f"⚠️ 의심 사유: {reason_text}")
+
+
 def render_product_qa(product: Product):
     """Q&A 탭."""
     st.subheader("💬 이 제품에 대해 질문하세요")
@@ -1551,11 +1673,14 @@ def render_product_qa(product: Product):
                     })
                     st.rerun()
 
-    # 메시지 히스토리 표시
+    # 메시지 히스토리 표시 (출처 포함)
     messages = st.session_state.product_messages[product_name]
-    for message in messages:
+    for msg_idx, message in enumerate(messages):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+            # 이전 대화의 출처도 표시
+            if message["role"] == "assistant" and message.get("sources"):
+                render_qa_sources(message["sources"], key_prefix=f"history_{msg_idx}")
 
     # 사용자 입력
     if prompt := st.chat_input("이 제품에 대해 질문하세요..."):
@@ -1576,19 +1701,15 @@ def render_product_qa(product: Product):
                 # 스트리밍 응답 표시
                 answer = st.write_stream(stream)
 
-                # 출처 표시
+                # 출처 표시 (개선된 버전)
                 if sources:
-                    with st.expander("📚 참조 리뷰"):
-                        for i, source in enumerate(sources, 1):
-                            rating = source.get("rating", "N/A")
-                            st.markdown(f"**[{i}]** ⭐ {rating}")
-                            st.markdown(f"> {source['text'][:300]}...")
-                            st.markdown("---")
+                    render_qa_sources(sources)
 
-                # 메시지 저장
+                # 메시지 저장 (출처 포함)
                 messages.append({
                     "role": "assistant",
                     "content": answer,
+                    "sources": sources,  # 출처도 저장
                 })
 
             except Exception as e:
@@ -1667,9 +1788,9 @@ def render_product_reviews(product: Product):
         # 감정별 글씨 색상 (하늘=긍정, 빨강=부정, 초록=중립)
         sentiment_color = {"긍정": "#1976D2", "중립": "#388E3C", "부정": "#D32F2F"}.get(review["sentiment"], "#666")
 
-        # 별점 표시
+        # 별점 표시 - "⭐ 5" 형태로 통일
         rating = review.get("rating", 0)
-        stars = "⭐" * rating + " " if rating and rating > 0 else ""
+        stars = f"⭐ {rating} " if rating and rating > 0 else ""
 
         # 신뢰도 검사
         trust_result = check_review_text(review["text"], rating)
@@ -1876,6 +1997,12 @@ def render_add_review(product: Product):
                         rating=current_rating
                     )
 
+                    # DB에서 최신 평균 별점 조회하여 Product 객체 업데이트
+                    db_product = get_product_by_name(product.name)
+                    if db_product:
+                        product.avg_rating = db_product.avg_rating
+                        product.review_count = db_product.review_count
+
                     # 텍스트 초기화 플래그 설정
                     st.session_state[clear_flag_key] = True
 
@@ -1932,11 +2059,11 @@ def render_compare_products():
     for i, product in enumerate(products):
         cols[i + 1].markdown(f"**{product.name[:15]}...**")
 
-    # 평점
+    # 평점 - "⭐ 5.0" 형태로 통일
     cols = st.columns(len(products) + 1)
-    cols[0].markdown("⭐ 평점")
+    cols[0].markdown("평점")
     for i, product in enumerate(products):
-        cols[i + 1].markdown(f"**{product.avg_rating:.1f}**")
+        cols[i + 1].markdown(f"**⭐ {product.avg_rating:.1f}**")
 
     # 리뷰 수
     cols = st.columns(len(products) + 1)
@@ -2065,7 +2192,7 @@ def render_compare_products():
 
     # 최고 평점 제품
     best_rating = max(products, key=lambda p: p.avg_rating)
-    st.success(f"⭐ **최고 평점:** {best_rating.name[:30]}... ({best_rating.avg_rating:.1f}점)")
+    st.success(f"**최고 평점:** {best_rating.name[:30]}... (⭐ {best_rating.avg_rating:.1f})")
 
     # 가장 긍정적인 제품
     best_positive = max(products, key=lambda p: p.get_sentiment_ratio()["긍정"])

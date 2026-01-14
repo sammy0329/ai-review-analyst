@@ -283,6 +283,36 @@ def get_review_count(product_name: str) -> dict:
     return stats
 
 
+def get_review_aspects_by_text(text: str) -> list[dict]:
+    """리뷰 텍스트로 aspects 조회.
+
+    Args:
+        text: 리뷰 텍스트 (부분 매칭)
+
+    Returns:
+        aspects 리스트 (없으면 빈 리스트)
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # 텍스트 앞부분으로 검색 (100자까지)
+    search_text = text[:100] if len(text) > 100 else text
+
+    cursor.execute(
+        "SELECT aspects FROM reviews WHERE text LIKE ? LIMIT 1",
+        (f"{search_text}%",)
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if row and row["aspects"]:
+        try:
+            return json.loads(row["aspects"])
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return []
+
+
 def delete_review(review_id: int) -> bool:
     """리뷰 삭제."""
     conn = get_connection()
@@ -316,17 +346,29 @@ def delete_review(review_id: int) -> bool:
 # =============================================================================
 
 def convert_score_to_rating(score: int) -> int:
-    """100점 만점을 5점 만점으로 변환."""
-    if score >= 80:
-        return 5
-    elif score >= 60:
-        return 4
-    elif score >= 40:
-        return 3
-    elif score >= 20:
-        return 2
+    """ReviewScore를 5점 만점으로 변환.
+
+    AI Hub 데이터는 두 가지 형식이 혼재:
+    - 5점 척도: 1, 2, 3, 4, 5
+    - 100점 만점: 10, 20, ..., 100
+
+    5 이하면 이미 5점 척도로 간주, 5 초과면 100점 만점으로 환산.
+    """
+    if score <= 5:
+        # 이미 5점 척도
+        return max(1, min(5, score))
     else:
-        return 1
+        # 100점 만점 → 5점 환산
+        if score >= 80:
+            return 5
+        elif score >= 60:
+            return 4
+        elif score >= 40:
+            return 3
+        elif score >= 20:
+            return 2
+        else:
+            return 1
 
 
 def migrate_aihub_json(json_dir: str = None) -> dict:
