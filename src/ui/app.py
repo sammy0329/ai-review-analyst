@@ -880,7 +880,43 @@ def render_product_detail_content(product: Product):
 
                     # AI 답변
                     with st.chat_message("assistant"):
-                        st.write(chat['answer'])
+                        if chat['answer'] == "💭 답변 준비중...":
+                            # 로딩 애니메이션 표시
+                            st.markdown(
+                                """
+                                <style>
+                                @keyframes pulse {
+                                    0%, 100% { opacity: 1; }
+                                    50% { opacity: 0.4; }
+                                }
+                                .loading-text {
+                                    animation: pulse 1.5s ease-in-out infinite;
+                                    display: inline-flex;
+                                    align-items: center;
+                                    gap: 8px;
+                                }
+                                .spinner {
+                                    width: 16px;
+                                    height: 16px;
+                                    border: 2px solid #e0e0e0;
+                                    border-top: 2px solid #1565c0;
+                                    border-radius: 50%;
+                                    animation: spin 1s linear infinite;
+                                }
+                                @keyframes spin {
+                                    0% { transform: rotate(0deg); }
+                                    100% { transform: rotate(360deg); }
+                                }
+                                </style>
+                                <div class="loading-text">
+                                    <div class="spinner"></div>
+                                    <span>리뷰 분석중...</span>
+                                </div>
+                                """,
+                                unsafe_allow_html=True
+                            )
+                        else:
+                            st.write(chat['answer'])
 
                         # 근거 리뷰 토글 (render_qa_sources와 동일한 형식)
                         sources = chat.get("sources", [])
