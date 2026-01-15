@@ -37,6 +37,7 @@ from src.pipeline.preprocessor import create_default_preprocessor
 from src.pipeline.embedder import create_embedder
 from src.chains.rag_chain import create_rag_chain
 from src.pipeline.fake_review_filter import check_review_text
+from src.pipeline.semantic_cache import get_semantic_cache, CacheResult
 
 # 로깅 초기화
 setup_logging(level="INFO")
@@ -921,6 +922,14 @@ def render_product_detail_content(product: Product):
 
     # Q&A 사용 통계 표시 (제품별)
     qa_metrics = get_qa_metrics(product_name=product.name)
+
+    # 캐시 통계 가져오기
+    try:
+        cache = get_semantic_cache()
+        cache_stats = cache.get_stats()
+    except Exception:
+        cache_stats = None
+
     if qa_metrics["total_questions"] > 0:
         avg_time = qa_metrics["avg_response_time_ms"]
         avg_time_str = f"{avg_time / 1000:.1f}초" if avg_time else "-"
@@ -933,9 +942,16 @@ def render_product_detail_content(product: Product):
         else:
             kw_str = ""
 
+        # 캐시 히트율 표시
+        cache_str = ""
+        if cache_stats and cache_stats.total_hits > 0:
+            cache_str = f" · ⚡ 캐시 히트 {cache_stats.hit_rate}%"
+            if cache_stats.estimated_savings_usd > 0:
+                cache_str += f" (${cache_stats.estimated_savings_usd:.3f} 절감)"
+
         st.caption(
             f"📊 이 제품 **{qa_metrics['total_questions']}개** 질문 · "
-            f"평균 응답 **{avg_time_str}**{kw_str}"
+            f"평균 응답 **{avg_time_str}**{kw_str}{cache_str}"
         )
     else:
         st.caption("💡 세션이 종료되면 대화 내용이 사라져요!")
@@ -2133,22 +2149,41 @@ def render_product_qa(product: Product):
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # AI 응답 생성 (스트리밍)
+        # AI 응답 생성 (캐시 + 스트리밍)
         with st.chat_message("assistant"):
             try:
                 import time
                 start_time = time.time()
 
-                rag_chain = st.session_state.product_rag_chain
+                # 시맨틱 캐시 조회
+                cache = get_semantic_cache()
+                cache_result = cache.lookup(prompt, product_name)
 
-                # 스트리밍 + 출처 가져오기
-                stream, sources = rag_chain.stream_with_sources(prompt)
+                if cache_result.hit:
+                    # 캐시 히트! 즉시 답변 표시
+                    answer = cache_result.answer
+                    sources = cache_result.sources
+                    st.markdown(answer)
 
-                # 스트리밍 응답 표시
-                answer = st.write_stream(stream)
+                    # 캐시 히트 표시
+                    st.caption(f"⚡ 캐시에서 응답 (유사도 {cache_result.similarity:.1%})")
 
-                # 응답 시간 계산 (ms)
-                response_time_ms = int((time.time() - start_time) * 1000)
+                    response_time_ms = int((time.time() - start_time) * 1000)
+                else:
+                    # 캐시 미스 - RAG 호출
+                    rag_chain = st.session_state.product_rag_chain
+
+                    # 스트리밍 + 출처 가져오기
+                    stream, sources = rag_chain.stream_with_sources(prompt)
+
+                    # 스트리밍 응답 표시
+                    answer = st.write_stream(stream)
+
+                    # 응답 시간 계산 (ms)
+                    response_time_ms = int((time.time() - start_time) * 1000)
+
+                    # 캐시에 저장
+                    cache.store(prompt, answer, sources, product_name)
 
                 # Q&A 로그 저장
                 save_qa_log(product_name, prompt, response_time_ms)
@@ -2162,6 +2197,7 @@ def render_product_qa(product: Product):
                     "role": "assistant",
                     "content": answer,
                     "sources": sources,  # 출처도 저장
+                    "from_cache": cache_result.hit,  # 캐시 히트 여부
                 })
 
                 # 입력창 초기화를 위해 rerun
