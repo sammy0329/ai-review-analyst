@@ -74,6 +74,19 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviews_sentiment ON reviews(sentiment)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_name ON products(name)")
 
+    # Q&A 피드백 테이블
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS qa_feedbacks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_name TEXT NOT NULL,
+            question TEXT NOT NULL,
+            answer TEXT NOT NULL,
+            feedback INTEGER NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_feedbacks_product ON qa_feedbacks(product_name)")
+
     conn.commit()
     conn.close()
 
@@ -559,3 +572,72 @@ def randomize_review_dates(start_days_ago: int = 365) -> int:
     conn.close()
 
     return updated
+
+
+# =============================================================================
+# Q&A 피드백
+# =============================================================================
+
+def save_qa_feedback(
+    product_name: str,
+    question: str,
+    answer: str,
+    feedback: int  # 1(helpful) or -1(not helpful)
+) -> int:
+    """Q&A 피드백 저장."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO qa_feedbacks (product_name, question, answer, feedback)
+        VALUES (?, ?, ?, ?)
+        """,
+        (product_name, question, answer, feedback),
+    )
+    conn.commit()
+    feedback_id = cursor.lastrowid
+    conn.close()
+    return feedback_id
+
+
+def get_feedback_stats(product_name: str | None = None) -> dict:
+    """피드백 통계 조회."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if product_name:
+        cursor.execute(
+            """
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN feedback = 1 THEN 1 ELSE 0 END) as helpful,
+                SUM(CASE WHEN feedback = -1 THEN 1 ELSE 0 END) as not_helpful
+            FROM qa_feedbacks
+            WHERE product_name = ?
+            """,
+            (product_name,),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN feedback = 1 THEN 1 ELSE 0 END) as helpful,
+                SUM(CASE WHEN feedback = -1 THEN 1 ELSE 0 END) as not_helpful
+            FROM qa_feedbacks
+            """
+        )
+
+    row = cursor.fetchone()
+    conn.close()
+
+    total = row["total"] or 0
+    helpful = row["helpful"] or 0
+    not_helpful = row["not_helpful"] or 0
+
+    return {
+        "total": total,
+        "helpful": helpful,
+        "not_helpful": not_helpful,
+        "helpful_rate": round(helpful / total * 100, 1) if total > 0 else 0,
+    }

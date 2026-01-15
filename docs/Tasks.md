@@ -632,18 +632,26 @@
 
 > **목표:** 고객 검증 준비, 비용 최적화, 응답 품질 개선
 
-### Epic 8.1: 사용자 피드백 수집
+### Epic 8.1: 사용자 피드백 수집 ✅
 
 > **목표:** 가설 검증을 위한 피드백 루프 구축
 
 | Task ID | Task | 상태 | 설명 |
 |---------|------|------|------|
-| 8.1.1 | [ ] 피드백 버튼 UI 추가 | 미완료 | Q&A 답변 후 👍/👎 버튼 |
-| 8.1.2 | [ ] 피드백 DB 테이블 생성 | 미완료 | question, answer, feedback, timestamp |
-| 8.1.3 | [ ] 피드백 저장 로직 구현 | 미완료 | SQLite INSERT |
-| 8.1.4 | [ ] 피드백 통계 조회 API | 미완료 | 긍정/부정 비율 계산 |
+| 8.1.1 | [x] 피드백 버튼 UI 추가 | 완료 | Q&A 답변 후 👍/👎 버튼 |
+| 8.1.2 | [x] 피드백 DB 테이블 생성 | 완료 | product_name, question, answer, feedback, timestamp |
+| 8.1.3 | [x] 피드백 저장 로직 구현 | 완료 | save_qa_feedback() 함수 |
+| 8.1.4 | [x] 피드백 통계 조회 API | 완료 | get_feedback_stats() 함수 |
 
-**완료 기준:** Q&A 답변에 대한 사용자 피드백 수집 및 저장
+**완료 기준:** Q&A 답변에 대한 사용자 피드백 수집 및 저장 ✅
+
+**구현 내용:**
+- `src/database.py`: qa_feedbacks 테이블 생성, save_qa_feedback(), get_feedback_stats()
+- `src/ui/app.py`: Q&A 답변 후 👍/👎 버튼 UI
+  - 피드백 완료 시 "✅ 피드백 감사합니다" 토스트 알림
+  - 피드백 중복 방지 (세션 상태 기반)
+  - 스트리밍 중에도 이전 답변 피드백 가능 (st.rerun → st.toast 전환)
+  - 버튼 레이아웃: `[📚 근거 리뷰] [👍] [👎]` 인라인 배치
 
 ---
 
@@ -717,8 +725,8 @@
 | Phase 5: Deployment | 3 | 1 (+2 스킵) | 100% |
 | Phase 6: Testing & Docs | 2 | 2 | 100% |
 | Phase 7: Consumer Review UX | 6 | 6 | 100% |
-| Phase 8: Optimization & Validation | 4 | 0 | 0% |
-| **Total** | **30** | **24** | **80%** |
+| Phase 8: Optimization & Validation | 4 | 1 | 25% |
+| **Total** | **30** | **25** | **83%** |
 
 ---
 
@@ -757,4 +765,4 @@
 
 ---
 
-*최종 업데이트: 2026-01-14 (Epic 7.6: SQLite 마이그레이션 및 서버 배포 버그 수정)*
+*최종 업데이트: 2026-01-15 (Epic 8.1: 사용자 피드백 수집 완료)*

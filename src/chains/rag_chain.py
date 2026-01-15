@@ -233,9 +233,13 @@ class ReviewRAGChain:
         Returns:
             (스트림 이터레이터, 출처 리스트) 튜플
         """
-        # 먼저 출처 문서 검색
-        source_docs = self._retriever.invoke(question)
+        logger.info(f"RAG 질의: {question[:50]}...")
 
+        # 1회만 검색 (중복 호출 제거)
+        source_docs = self._retriever.invoke(question)
+        logger.debug(f"검색된 문서: {len(source_docs)}개")
+
+        # 출처 정보 추출
         sources = []
         for doc in source_docs:
             text = doc.metadata.get("original_text") or doc.page_content
@@ -246,8 +250,35 @@ class ReviewRAGChain:
                 "review_hash": doc.metadata.get("review_hash"),
             })
 
-        # 스트리밍 이터레이터 반환
-        return self._chain.stream(question), sources
+        # context 직접 포맷팅 (retriever 재호출 방지)
+        formatted_context = self._format_docs(source_docs)
+
+        # retriever 없이 직접 LLM 호출
+        direct_chain = self._prompt | self._llm | StrOutputParser()
+
+        def stream_generator():
+            for chunk in direct_chain.stream({
+                "context": formatted_context,
+                "question": question,
+            }):
+                yield chunk
+            logger.info("답변 생성 완료")
+
+        return stream_generator(), sources
+
+    def _format_docs(self, docs: list[Document]) -> str:
+        """문서 포맷팅."""
+        formatted = []
+        for i, doc in enumerate(docs, 1):
+            rating = doc.metadata.get("rating", "N/A")
+            date = doc.metadata.get("date", "N/A")
+            text = doc.page_content
+
+            formatted.append(
+                f"[리뷰 {i}] (평점: {rating}, 날짜: {date})\n{text}"
+            )
+
+        return "\n\n".join(formatted)
 
     def update_config(self, **kwargs) -> None:
         """

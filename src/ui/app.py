@@ -29,7 +29,7 @@ from src.database import (
     init_db, add_review, get_reviews_by_product, migrate_aihub_product,
     get_or_create_product, delete_review, get_review_aspects_by_text,
     get_product_by_name, get_all_products as db_get_products,
-    get_review_count,
+    get_review_count, save_qa_feedback,
 )
 from src.pipeline.aihub_loader import AIHubDataLoader, Product, AIHubReview
 from src.pipeline.aspect_extractor import create_aspect_extractor
@@ -518,6 +518,10 @@ def init_session_state():
     if "product_aspects" not in st.session_state:
         st.session_state.product_aspects = {}
 
+    # Q&A 피드백 상태 (메시지별)
+    if "feedback_given" not in st.session_state:
+        st.session_state.feedback_given = {}  # {f"{product}_{idx}": True}
+
 init_session_state()
 
 
@@ -979,139 +983,183 @@ def render_product_detail_content(product: Product):
                         else:
                             st.write(chat['answer'])
 
-                        # 근거 리뷰 토글 (render_qa_sources와 동일한 형식)
+                        # 근거 리뷰 토글 + 피드백 버튼 (같은 줄)
                         sources = chat.get("sources", [])
+                        if chat['answer'] != "💭 답변 준비중...":
+                            chat_idx = chat_history.index(chat)
+                            feedback_key = f"{product.name}_qa_{chat_idx}"
+
                         if sources and chat['answer'] != "💭 답변 준비중...":
-                            with st.popover(f"📚 근거 리뷰 ({len(sources)}개)"):
-                                st.caption("💡 AI가 답변을 생성할 때 참고한 리뷰들입니다")
+                            # 근거 리뷰 팝오버 + 피드백 버튼 (인라인)
+                            feedback_given = feedback_key in st.session_state.feedback_given
+                            if feedback_given:
+                                # 피드백 완료 상태
+                                btn_cols = st.columns([2.5, 2, 4.5])
+                                with btn_cols[0]:
+                                    with st.popover(f"📚 근거 리뷰 ({len(sources)}개)"):
+                                        st.caption("💡 AI가 답변을 생성할 때 참고한 리뷰들입니다")
 
-                                # AI 응답에서 인용 문구 추출 (하이라이트용)
-                                import re
-                                answer = chat['answer']
-                                question = chat['question']
+                                        # AI 응답에서 인용 문구 추출 (하이라이트용)
+                                        import re
+                                        answer = chat['answer']
+                                        question = chat['question']
 
-                                # 1. AI 응답에서 따옴표 안의 문구 추출
-                                quoted_phrases = re.findall(r'["""]([^"""]+)["""]', answer)
-                                # 짧은 문구만 필터 (3자 이상, 50자 이하)
-                                quoted_phrases = [p.strip() for p in quoted_phrases if 3 <= len(p.strip()) <= 50]
+                                        # 1. AI 응답에서 따옴표 안의 문구 추출
+                                        quoted_phrases = re.findall(r'["""]([^"""]+)["""]', answer)
+                                        # 짧은 문구만 필터 (3자 이상, 50자 이하)
+                                        quoted_phrases = [p.strip() for p in quoted_phrases if 3 <= len(p.strip()) <= 50]
 
-                                # 2. 질문에서 키워드도 추출 (fallback용)
-                                stopwords = {"이", "가", "은", "는", "을", "를", "의", "에", "에서", "로", "으로", "와", "과", "도", "만", "이나", "나", "고", "하고", "해서", "어떤", "어떻", "뭐", "뭔", "좀", "잘", "더", "많이", "정말", "진짜", "너무", "아주", "매우", "제품", "상품", "이거", "저거", "그거", "있", "없", "하", "되", "같", "인가요", "인가", "예요", "에요", "나요", "까요"}
-                                keywords = [w for w in re.findall(r'[가-힣]+', question) if len(w) >= 2 and w not in stopwords]
+                                        # 2. 질문에서 키워드도 추출 (fallback용)
+                                        stopwords = {"이", "가", "은", "는", "을", "를", "의", "에", "에서", "로", "으로", "와", "과", "도", "만", "이나", "나", "고", "하고", "해서", "어떤", "어떻", "뭐", "뭔", "좀", "잘", "더", "많이", "정말", "진짜", "너무", "아주", "매우", "제품", "상품", "이거", "저거", "그거", "있", "없", "하", "되", "같", "인가요", "인가", "예요", "에요", "나요", "까요"}
+                                        keywords = [w for w in re.findall(r'[가-힣]+', question) if len(w) >= 2 and w not in stopwords]
 
-                                def highlight_text(text: str, phrases: list, keywords: list) -> str:
-                                    """인용 문구 또는 키워드를 하이라이트."""
-                                    result = text
-                                    highlighted_any = False
+                                        def highlight_text_fb(text: str, phrases: list, keywords: list) -> str:
+                                            """인용 문구 또는 키워드를 하이라이트."""
+                                            result = text
+                                            highlighted_any = False
 
-                                    # 1. 인용 문구 정확히 하이라이트
-                                    for phrase in phrases:
-                                        if phrase in result:
-                                            result = result.replace(
-                                                phrase,
-                                                f'<mark style="background-color: #fff3cd; padding: 2px 4px; border-radius: 4px;">{phrase}</mark>',
-                                                1
-                                            )
-                                            highlighted_any = True
-
-                                    # 2. 인용 문구로 하이라이트 안 됐으면 키워드로 시도
-                                    if not highlighted_any and keywords:
-                                        for kw in keywords:
-                                            if kw in result:
-                                                # 키워드가 포함된 짧은 구절 찾기
-                                                pattern = f'([가-힣]*{re.escape(kw)}[가-힣]*)'
-                                                match = re.search(pattern, result)
-                                                if match:
-                                                    matched = match.group(1)
+                                            # 1. 인용 문구 정확히 하이라이트
+                                            for phrase in phrases:
+                                                if phrase in result:
                                                     result = result.replace(
-                                                        matched,
-                                                        f'<mark style="background-color: #fff3cd; padding: 2px 4px; border-radius: 4px;">{matched}</mark>',
+                                                        phrase,
+                                                        f'<mark style="background-color: #fff3cd; padding: 2px 4px; border-radius: 4px;">{phrase}</mark>',
                                                         1
                                                     )
-                                                    break
+                                                    highlighted_any = True
 
-                                    return result
+                                            # 2. 인용 문구로 하이라이트 안 됐으면 키워드로 시도
+                                            if not highlighted_any and keywords:
+                                                for kw in keywords:
+                                                    if kw in result:
+                                                        result = result.replace(
+                                                            kw,
+                                                            f'<mark style="background-color: #e7f3ff; padding: 2px 4px; border-radius: 4px;">{kw}</mark>',
+                                                            1
+                                                        )
+                                                        highlighted_any = True
+                                                        break
 
-                                # 감정/속성 색상 매핑
-                                sentiment_colors = {"긍정": "#1565c0", "부정": "#c62828", "중립": "#2e7d32"}
-                                aspect_colors = {1: "#1565c0", "1": "#1565c0", -1: "#c62828", "-1": "#c62828", 0: "#666", "0": "#666"}
+                                            return result
 
-                                for idx, src in enumerate(sources[:5], 1):
-                                    # 텍스트와 평점 추출
-                                    if hasattr(src, 'page_content'):
-                                        text = src.page_content
-                                        rating = src.metadata.get("rating") if hasattr(src, 'metadata') else None
-                                    elif isinstance(src, dict):
-                                        text = src.get("text", src.get("page_content", ""))
-                                        rating = src.get("rating")
-                                    else:
-                                        text = str(src)
-                                        rating = None
+                                        for j, src in enumerate(sources, 1):
+                                            content = src.get("content", "내용 없음")
+                                            rating = src.get("rating", "N/A")
 
-                                    if not text:
-                                        continue
+                                            # 하이라이트 적용
+                                            highlighted_content = highlight_text_fb(content, quoted_phrases, keywords)
 
-                                    # 가짜 리뷰 검사
-                                    fake_result = check_review_text(text, int(rating) if rating else None)
-                                    is_suspicious = fake_result.is_suspicious
+                                            # 별점 이모지
+                                            try:
+                                                rating_int = int(rating)
+                                                stars = "⭐" * rating_int
+                                            except (ValueError, TypeError):
+                                                stars = f"별점: {rating}"
 
-                                    # DB에서 속성 분석 조회
-                                    aspects = get_review_aspects_by_text(text)
+                                            # 하이라이트가 포함된 경우 HTML로 렌더링
+                                            if '<mark' in highlighted_content:
+                                                st.markdown(f"**{j}. {stars}**", unsafe_allow_html=True)
+                                                st.markdown(f'<div style="background-color: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 10px;">{highlighted_content}</div>', unsafe_allow_html=True)
+                                            else:
+                                                st.markdown(f"**{j}. {stars}**")
+                                                st.info(content)
+                                with btn_cols[1]:
+                                    st.caption("✅ 피드백 감사합니다")
+                            else:
+                                # 피드백 대기 상태
+                                btn_cols = st.columns([2.5, 0.4, 0.4, 5.7])
+                                with btn_cols[0]:
+                                    with st.popover(f"📚 근거 리뷰 ({len(sources)}개)"):
+                                        st.caption("💡 AI가 답변을 생성할 때 참고한 리뷰들입니다")
 
-                                    # 감정 추정 (별점 기반)
-                                    if rating:
-                                        if rating >= 4:
-                                            sentiment, emoji = "긍정", "😊"
-                                        elif rating <= 2:
-                                            sentiment, emoji = "부정", "😞"
-                                        else:
-                                            sentiment, emoji = "중립", "😐"
-                                    else:
-                                        sentiment, emoji = "중립", "😐"
+                                        # AI 응답에서 인용 문구 추출 (하이라이트용)
+                                        import re
+                                        answer = chat['answer']
+                                        question = chat['question']
 
-                                    color = sentiment_colors.get(sentiment, "#666")
-                                    rating_display = f"⭐ {rating}" if rating else "평점 없음"
-                                    suspicious_label = " <span style='color: orange; font-weight: bold;'>[의심]</span>" if is_suspicious else ""
+                                        # 1. AI 응답에서 따옴표 안의 문구 추출
+                                        quoted_phrases = re.findall(r'["""]([^"""]+)["""]', answer)
+                                        # 짧은 문구만 필터 (3자 이상, 50자 이하)
+                                        quoted_phrases = [p.strip() for p in quoted_phrases if 3 <= len(p.strip()) <= 50]
 
-                                    # 키워드 하이라이트 적용
-                                    highlighted_text = highlight_text(text, quoted_phrases, keywords)
+                                        # 2. 질문에서 키워드도 추출 (fallback용)
+                                        stopwords = {"이", "가", "은", "는", "을", "를", "의", "에", "에서", "로", "으로", "와", "과", "도", "만", "이나", "나", "고", "하고", "해서", "어떤", "어떻", "뭐", "뭔", "좀", "잘", "더", "많이", "정말", "진짜", "너무", "아주", "매우", "제품", "상품", "이거", "저거", "그거", "있", "없", "하", "되", "같", "인가요", "인가", "예요", "에요", "나요", "까요"}
+                                        keywords = [w for w in re.findall(r'[가-힣]+', question) if len(w) >= 2 and w not in stopwords]
 
-                                    # 속성 태그 HTML
-                                    aspect_tags_html = ""
-                                    if aspects:
-                                        tags = []
-                                        for asp in aspects[:5]:
-                                            asp_name = asp.get("Aspect", "")
-                                            asp_polarity = asp.get("SentimentPolarity", 0)
-                                            asp_color = aspect_colors.get(asp_polarity, "#666")
-                                            if asp_name:
-                                                tags.append(
-                                                    f'<span style="display: inline-block; padding: 2px 8px; margin: 2px; '
-                                                    f'border-radius: 12px; background-color: {asp_color}; color: white; '
-                                                    f'font-size: 0.75em;">{asp_name}</span>'
-                                                )
-                                        if tags:
-                                            aspect_tags_html = f'<div style="margin-top: 8px;"><b>🏷️ 속성 분석:</b> {"".join(tags)}</div>'
+                                        def highlight_text_nf(text: str, phrases: list, keywords: list) -> str:
+                                            """인용 문구 또는 키워드를 하이라이트."""
+                                            result = text
+                                            highlighted_any = False
 
-                                    # HTML 렌더링
-                                    st.markdown(
-                                        f"""
-                                        <div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid {color};">
-                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                                <span style="font-weight: bold; color: #333;">[{idx}] {emoji} {sentiment}</span>
-                                                <span style="font-size: 0.85em; color: #666;">{rating_display}{suspicious_label}</span>
-                                            </div>
-                                            <div style="line-height: 1.6; color: #444;">{highlighted_text}</div>
-                                            {aspect_tags_html}
-                                        </div>
-                                        """,
-                                        unsafe_allow_html=True
-                                    )
+                                            # 1. 인용 문구 정확히 하이라이트
+                                            for phrase in phrases:
+                                                if phrase in result:
+                                                    result = result.replace(
+                                                        phrase,
+                                                        f'<mark style="background-color: #fff3cd; padding: 2px 4px; border-radius: 4px;">{phrase}</mark>',
+                                                        1
+                                                    )
+                                                    highlighted_any = True
 
-                                    # 의심 사유 표시
-                                    if is_suspicious and fake_result.reasons:
-                                        reason_text = ", ".join([r.value for r in fake_result.reasons])
-                                        st.caption(f"⚠️ 의심 사유: {reason_text}")
+                                            # 2. 인용 문구로 하이라이트 안 됐으면 키워드로 시도
+                                            if not highlighted_any and keywords:
+                                                for kw in keywords:
+                                                    if kw in result:
+                                                        result = result.replace(
+                                                            kw,
+                                                            f'<mark style="background-color: #e7f3ff; padding: 2px 4px; border-radius: 4px;">{kw}</mark>',
+                                                            1
+                                                        )
+                                                        highlighted_any = True
+                                                        break
+
+                                            return result
+
+                                        for j, src in enumerate(sources, 1):
+                                            content = src.get("content", "내용 없음")
+                                            rating = src.get("rating", "N/A")
+
+                                            # 하이라이트 적용
+                                            highlighted_content = highlight_text_nf(content, quoted_phrases, keywords)
+
+                                            # 별점 이모지
+                                            try:
+                                                rating_int = int(rating)
+                                                stars = "⭐" * rating_int
+                                            except (ValueError, TypeError):
+                                                stars = f"별점: {rating}"
+
+                                            # 하이라이트가 포함된 경우 HTML로 렌더링
+                                            if '<mark' in highlighted_content:
+                                                st.markdown(f"**{j}. {stars}**", unsafe_allow_html=True)
+                                                st.markdown(f'<div style="background-color: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 10px;">{highlighted_content}</div>', unsafe_allow_html=True)
+                                            else:
+                                                st.markdown(f"**{j}. {stars}**")
+                                                st.info(content)
+                                with btn_cols[1]:
+                                    if st.button("👍", key=f"helpful_{feedback_key}", help="도움이 됐어요"):
+                                        save_qa_feedback(product.name, chat['question'], chat['answer'], 1)
+                                        st.session_state.feedback_given[feedback_key] = True
+                                        st.toast("✅ 피드백 감사합니다!", icon="👍")
+                                with btn_cols[2]:
+                                    if st.button("👎", key=f"not_helpful_{feedback_key}", help="도움이 안 됐어요"):
+                                        save_qa_feedback(product.name, chat['question'], chat['answer'], -1)
+                                        st.session_state.feedback_given[feedback_key] = True
+                                        st.toast("✅ 피드백 감사합니다!", icon="👎")
+                        elif sources and chat['answer'] == "💭 답변 준비중...":
+                            # 답변 준비중일 때는 팝오버만 표시 (버튼 없음)
+                            with st.popover(f"📚 근거 리뷰 ({len(sources)}개)"):
+                                st.caption("💡 AI가 답변을 생성할 때 참고한 리뷰들입니다")
+                                for j, src in enumerate(sources, 1):
+                                    content = src.get("content", "내용 없음")
+                                    rating = src.get("rating", "N/A")
+                                    try:
+                                        rating_int = int(rating)
+                                        stars = "⭐" * rating_int
+                                    except (ValueError, TypeError):
+                                        stars = f"별점: {rating}"
+                                    st.markdown(f"**{j}. {stars}**")
+                                    st.info(content)
 
         # 자주 묻는 질문 버튼
         faq_col1, faq_col2, faq_col3 = st.columns(3)
@@ -1125,13 +1173,13 @@ def render_product_detail_content(product: Product):
             if st.button("⚠️ 단점", use_container_width=True, key="faq_cons"):
                 st.session_state.b2c_question = "이 제품의 주요 단점이 뭔가요?"
 
-        # 질문 입력 (하단)
+        # 질문 입력 (하단) - 동적 key로 입력창 초기화
         input_col, btn_col = st.columns([5, 1])
         with input_col:
             user_question = st.text_input(
                 "질문",
                 placeholder="궁금한 점을 입력하세요...",
-                key="b2c_user_question",
+                key=f"b2c_user_question_{len(chat_history)}",
                 label_visibility="collapsed"
             )
         with btn_col:
@@ -1974,6 +2022,29 @@ def render_product_qa(product: Product):
             # 이전 대화의 출처도 표시
             if message["role"] == "assistant" and message.get("sources"):
                 render_qa_sources(message["sources"], key_prefix=f"history_{msg_idx}")
+
+            # assistant 메시지에 피드백 버튼 추가
+            if message["role"] == "assistant":
+                feedback_key = f"{product_name}_{msg_idx}"
+                if feedback_key not in st.session_state.feedback_given:
+                    # 이전 user 메시지(질문) 찾기
+                    question = ""
+                    if msg_idx > 0 and messages[msg_idx - 1]["role"] == "user":
+                        question = messages[msg_idx - 1]["content"]
+
+                    col1, col2, col3 = st.columns([1, 1, 6])
+                    with col1:
+                        if st.button("👍", key=f"helpful_{feedback_key}", help="도움이 됐어요"):
+                            save_qa_feedback(product_name, question, message["content"], 1)
+                            st.session_state.feedback_given[feedback_key] = True
+                            st.rerun()
+                    with col2:
+                        if st.button("👎", key=f"not_helpful_{feedback_key}", help="도움이 안됐어요"):
+                            save_qa_feedback(product_name, question, message["content"], -1)
+                            st.session_state.feedback_given[feedback_key] = True
+                            st.rerun()
+                else:
+                    st.caption("✅ 피드백 감사합니다!")
 
     # 사용자 입력 (메시지 수 기반 key로 입력창 리셋)
     if prompt := st.chat_input("이 제품에 대해 질문하세요...", key=f"qa_input_{product_name}_{len(messages)}"):
