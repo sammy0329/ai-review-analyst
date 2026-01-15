@@ -230,6 +230,7 @@ class ReviewEmbedder:
         self,
         query: str,
         top_k: int | None = None,
+        min_score: float | None = None,
         filter_rating_min: float | None = None,
         filter_rating_max: float | None = None,
         filter_metadata: dict[str, Any] | None = None,
@@ -240,6 +241,7 @@ class ReviewEmbedder:
         Args:
             query: 검색 쿼리
             top_k: 반환할 결과 수
+            min_score: 최소 유사도 점수 (이 값 미만은 필터링)
             filter_rating_min: 최소 평점 필터
             filter_rating_max: 최대 평점 필터
             filter_metadata: 추가 메타데이터 필터
@@ -269,9 +271,13 @@ class ReviewEmbedder:
                 k=k,
             )
 
-        # 결과 변환
+        # 결과 변환 (min_score 필터링 적용)
         search_results = []
         for doc, score in results:
+            # min_score 임계값 미만은 제외
+            if min_score is not None and score < min_score:
+                continue
+
             search_results.append(
                 SearchResult(
                     text=doc.page_content,

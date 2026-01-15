@@ -46,7 +46,8 @@ class RAGConfig:
     streaming: bool = True
 
     # 검색 설정
-    top_k: int = 5
+    top_k: int = 10  # 검색할 최대 리뷰 수
+    min_score: float = 0.3  # 최소 유사도 점수 (이 값 미만은 필터링)
     search_type: str = "similarity"  # "similarity" or "mmr"
 
     # 프롬프트 설정
@@ -93,12 +94,6 @@ class ReviewRAGChain:
             openai_api_key=self._api_key,
         )
 
-        # Retriever 설정
-        self._retriever = self.embedder.get_retriever(
-            search_type=self.config.search_type,
-            top_k=self.config.top_k,
-        )
-
         # 프롬프트 템플릿 생성
         self._prompt = ChatPromptTemplate.from_messages([
             ("system", self.config.system_prompt),
@@ -108,11 +103,45 @@ class ReviewRAGChain:
         # RAG Chain 구성
         self._chain = self._build_chain()
 
+    def _retrieve_filtered(self, question: str) -> list[Document]:
+        """
+        유사도 기반 필터링을 적용한 문서 검색.
+
+        Args:
+            question: 검색 쿼리
+
+        Returns:
+            필터링된 Document 리스트
+        """
+        # 유사도 점수와 함께 검색
+        results = self.embedder._vectorstore.similarity_search_with_relevance_scores(
+            query=question,
+            k=self.config.top_k,
+        )
+
+        # min_score 이상인 결과만 필터링
+        filtered_docs = []
+        for doc, score in results:
+            if score >= self.config.min_score:
+                # score를 메타데이터에 저장 (나중에 참조용)
+                doc.metadata["relevance_score"] = score
+                filtered_docs.append(doc)
+
+        logger.debug(
+            f"검색 결과: {len(results)}개 중 {len(filtered_docs)}개가 "
+            f"min_score({self.config.min_score}) 이상"
+        )
+
+        return filtered_docs
+
     def _build_chain(self):
         """RAG Chain 구성."""
 
         def format_docs(docs: list[Document]) -> str:
             """문서 포맷팅."""
+            if not docs:
+                return "관련 리뷰를 찾지 못했습니다."
+
             formatted = []
             for i, doc in enumerate(docs, 1):
                 rating = doc.metadata.get("rating", "N/A")
@@ -126,9 +155,11 @@ class ReviewRAGChain:
             return "\n\n".join(formatted)
 
         # Chain 구성: 검색 → 포맷팅 → 프롬프트 → LLM → 파싱
+        from langchain_core.runnables import RunnableLambda
+
         chain = (
             {
-                "context": self._retriever | format_docs,
+                "context": RunnableLambda(self._retrieve_filtered) | format_docs,
                 "question": RunnablePassthrough(),
             }
             | self._prompt
@@ -150,8 +181,8 @@ class ReviewRAGChain:
         """
         logger.info(f"RAG 질의: {question[:50]}...")
 
-        # 관련 문서 검색
-        source_docs = self._retriever.invoke(question)
+        # 관련 문서 검색 (유사도 필터링 적용)
+        source_docs = self._retrieve_filtered(question)
         logger.debug(f"검색된 문서: {len(source_docs)}개")
 
         # 답변 생성
@@ -164,6 +195,7 @@ class ReviewRAGChain:
             metadata={
                 "model": self.config.model_name,
                 "top_k": self.config.top_k,
+                "min_score": self.config.min_score,
                 "num_sources": len(source_docs),
             },
         )
@@ -235,8 +267,8 @@ class ReviewRAGChain:
         """
         logger.info(f"RAG 질의: {question[:50]}...")
 
-        # 1회만 검색 (중복 호출 제거)
-        source_docs = self._retriever.invoke(question)
+        # 1회만 검색 (유사도 필터링 적용)
+        source_docs = self._retrieve_filtered(question)
         logger.debug(f"검색된 문서: {len(source_docs)}개")
 
         # 출처 정보 추출
@@ -268,6 +300,9 @@ class ReviewRAGChain:
 
     def _format_docs(self, docs: list[Document]) -> str:
         """문서 포맷팅."""
+        if not docs:
+            return "관련 리뷰를 찾지 못했습니다."
+
         formatted = []
         for i, doc in enumerate(docs, 1):
             rating = doc.metadata.get("rating", "N/A")
@@ -301,14 +336,7 @@ class ReviewRAGChain:
                 openai_api_key=self._api_key,
             )
 
-        # Retriever 재설정
-        if any(k in kwargs for k in ["top_k", "search_type"]):
-            self._retriever = self.embedder.get_retriever(
-                search_type=self.config.search_type,
-                top_k=self.config.top_k,
-            )
-
-        # Chain 재구성
+        # Chain 재구성 (top_k, min_score 변경 시 반영됨)
         self._chain = self._build_chain()
 
     def set_prompt(self, prompt_name: str) -> None:
@@ -349,11 +377,6 @@ class ReviewRAGChain:
 
         # Chain 재구성
         self._chain = self._build_chain()
-
-    @property
-    def retriever(self):
-        """Retriever 반환."""
-        return self._retriever
 
     @property
     def llm(self):

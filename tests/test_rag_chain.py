@@ -34,7 +34,8 @@ class TestRAGConfig:
         assert config.temperature == 0.0
         assert config.max_tokens == 2048
         assert config.streaming is True
-        assert config.top_k == 5
+        assert config.top_k == 10
+        assert config.min_score == 0.3
         assert config.search_type == "similarity"
 
     def test_custom_values(self):
@@ -176,12 +177,10 @@ class TestReviewRAGChainMethods:
         with patch("src.chains.rag_chain.ChatOpenAI") as mock_llm:
             with patch("src.chains.rag_chain.create_embedder") as mock_create:
                 mock_embedder = MagicMock()
-                mock_embedder.get_retriever.return_value = MagicMock()
                 mock_create.return_value = mock_embedder
 
                 chain = ReviewRAGChain(openai_api_key="test-key")
                 chain._chain = MagicMock()
-                chain._retriever = MagicMock()
 
                 yield chain
 
@@ -191,7 +190,8 @@ class TestReviewRAGChainMethods:
         mock_doc.page_content = "좋은 제품입니다"
         mock_doc.metadata = {"rating": 5.0, "date": "2024-01-15"}
 
-        mock_chain._retriever.invoke.return_value = [mock_doc]
+        # _retrieve_filtered 메서드 모킹
+        mock_chain._retrieve_filtered = MagicMock(return_value=[mock_doc])
         mock_chain._chain.invoke.return_value = "배송이 빠릅니다."
 
         response = mock_chain.query("배송이 빠른가요?")
@@ -211,7 +211,8 @@ class TestReviewRAGChainMethods:
             "review_hash": "abc123",
         }
 
-        mock_chain._retriever.invoke.return_value = [mock_doc]
+        # _retrieve_filtered 메서드 모킹
+        mock_chain._retrieve_filtered = MagicMock(return_value=[mock_doc])
         mock_chain._chain.invoke.return_value = "품질에 대해 긍정적입니다."
 
         result = mock_chain.query_with_sources("품질은 어떤가요?")
@@ -251,10 +252,6 @@ class TestReviewRAGChainMethods:
 
         assert mock_chain.config.top_k == 10
         assert mock_chain.config.search_type == "mmr"
-
-    def test_retriever_property(self, mock_chain):
-        """retriever 프로퍼티 테스트."""
-        assert mock_chain.retriever is not None
 
     def test_llm_property(self, mock_chain):
         """llm 프로퍼티 테스트."""

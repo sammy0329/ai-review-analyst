@@ -1923,8 +1923,13 @@ def render_qa_sources(sources: list[dict], key_prefix: str = "current"):
         sources: 출처 리뷰 목록
         key_prefix: expander 키 중복 방지용 접두사
     """
+    # 출처 개수 표시
     if not sources:
+        st.info("🔍 관련 리뷰를 찾지 못했습니다. 다른 질문을 시도해보세요.")
         return
+
+    # 참고한 리뷰 개수 표시
+    st.caption(f"📚 {len(sources)}개 리뷰 참고")
 
     # 감정 색상 매핑
     sentiment_colors = {
@@ -2188,9 +2193,8 @@ def render_product_qa(product: Product):
                 # Q&A 로그 저장
                 save_qa_log(product_name, prompt, response_time_ms)
 
-                # 출처 표시 (개선된 버전)
-                if sources:
-                    render_qa_sources(sources)
+                # 출처 표시 (개선된 버전) - 빈 결과도 표시
+                render_qa_sources(sources)
 
                 # 메시지 저장 (출처 포함)
                 messages.append({
