@@ -29,7 +29,7 @@ from src.database import (
     init_db, add_review, get_reviews_by_product, migrate_aihub_product,
     get_or_create_product, delete_review, get_review_aspects_by_text,
     get_product_by_name, get_all_products as db_get_products,
-    get_review_count, save_qa_feedback,
+    get_review_count, save_qa_feedback, save_qa_log, get_qa_metrics,
 )
 from src.pipeline.aihub_loader import AIHubDataLoader, Product, AIHubReview
 from src.pipeline.aspect_extractor import create_aspect_extractor
@@ -918,7 +918,27 @@ def render_product_detail_content(product: Product):
 
     # 카카오톡 스타일 Q&A 채팅
     st.subheader("💬 AI에게 물어보세요")
-    st.caption("💡 세션이 종료되면 대화 내용이 사라져요!")
+
+    # Q&A 사용 통계 표시 (제품별)
+    qa_metrics = get_qa_metrics(product_name=product.name)
+    if qa_metrics["total_questions"] > 0:
+        avg_time = qa_metrics["avg_response_time_ms"]
+        avg_time_str = f"{avg_time / 1000:.1f}초" if avg_time else "-"
+
+        # 인기 질문 Top 3 표시
+        top_kws = qa_metrics.get("top_keywords", [])
+        if top_kws:
+            kw_parts = [f"{kw['keyword']}({kw['count']})" for kw in top_kws]
+            kw_str = f" · 인기: {', '.join(kw_parts)}"
+        else:
+            kw_str = ""
+
+        st.caption(
+            f"📊 이 제품 **{qa_metrics['total_questions']}개** 질문 · "
+            f"평균 응답 **{avg_time_str}**{kw_str}"
+        )
+    else:
+        st.caption("💡 세션이 종료되면 대화 내용이 사라져요!")
 
     @st.fragment
     def render_qa_fragment():
@@ -991,10 +1011,10 @@ def render_product_detail_content(product: Product):
 
                         if sources and chat['answer'] != "💭 답변 준비중...":
                             # 근거 리뷰 팝오버 + 피드백 버튼 (인라인)
-                            feedback_given = feedback_key in st.session_state.feedback_given
-                            if feedback_given:
-                                # 피드백 완료 상태
-                                btn_cols = st.columns([2.5, 2, 4.5])
+                            feedback_value = st.session_state.feedback_given.get(feedback_key)
+                            if feedback_value is not None:
+                                # 피드백 완료 상태 - 비활성화된 버튼 표시
+                                btn_cols = st.columns([2.5, 0.5, 0.5, 5.5])
                                 with btn_cols[0]:
                                     with st.popover(f"📚 근거 리뷰 ({len(sources)}개)"):
                                         st.caption("💡 AI가 답변을 생성할 때 참고한 리뷰들입니다")
@@ -1043,7 +1063,7 @@ def render_product_detail_content(product: Product):
                                             return result
 
                                         for j, src in enumerate(sources, 1):
-                                            content = src.get("content", "내용 없음")
+                                            content = src.get("text", src.get("content", "내용 없음"))
                                             rating = src.get("rating", "N/A")
 
                                             # 하이라이트 적용
@@ -1064,7 +1084,29 @@ def render_product_detail_content(product: Product):
                                                 st.markdown(f"**{j}. {stars}**")
                                                 st.info(content)
                                 with btn_cols[1]:
-                                    st.caption("✅ 피드백 감사합니다")
+                                    # 👍 선택됨 - 핑크 배경으로 강조
+                                    if feedback_value == 1:
+                                        st.markdown(
+                                            '<span style="display: inline-block; background-color: #FCE4EC; padding: 4px 10px; border-radius: 8px;">👍</span>',
+                                            unsafe_allow_html=True
+                                        )
+                                    else:
+                                        st.markdown(
+                                            '<span style="display: inline-block; background-color: #f5f5f5; padding: 4px 10px; border-radius: 8px; opacity: 0.4;">👍</span>',
+                                            unsafe_allow_html=True
+                                        )
+                                with btn_cols[2]:
+                                    # 👎 선택됨 - 핑크 배경으로 강조
+                                    if feedback_value == -1:
+                                        st.markdown(
+                                            '<span style="display: inline-block; background-color: #FCE4EC; padding: 4px 10px; border-radius: 8px;">👎</span>',
+                                            unsafe_allow_html=True
+                                        )
+                                    else:
+                                        st.markdown(
+                                            '<span style="display: inline-block; background-color: #f5f5f5; padding: 4px 10px; border-radius: 8px; opacity: 0.4;">👎</span>',
+                                            unsafe_allow_html=True
+                                        )
                             else:
                                 # 피드백 대기 상태
                                 btn_cols = st.columns([2.5, 0.4, 0.4, 5.7])
@@ -1116,7 +1158,7 @@ def render_product_detail_content(product: Product):
                                             return result
 
                                         for j, src in enumerate(sources, 1):
-                                            content = src.get("content", "내용 없음")
+                                            content = src.get("text", src.get("content", "내용 없음"))
                                             rating = src.get("rating", "N/A")
 
                                             # 하이라이트 적용
@@ -1139,19 +1181,21 @@ def render_product_detail_content(product: Product):
                                 with btn_cols[1]:
                                     if st.button("👍", key=f"helpful_{feedback_key}", help="도움이 됐어요"):
                                         save_qa_feedback(product.name, chat['question'], chat['answer'], 1)
-                                        st.session_state.feedback_given[feedback_key] = True
+                                        st.session_state.feedback_given[feedback_key] = 1  # 어떤 피드백인지 저장
                                         st.toast("✅ 피드백 감사합니다!", icon="👍")
+                                        st.rerun(scope="app")  # fragment 내부이므로 전체 앱 리런
                                 with btn_cols[2]:
                                     if st.button("👎", key=f"not_helpful_{feedback_key}", help="도움이 안 됐어요"):
                                         save_qa_feedback(product.name, chat['question'], chat['answer'], -1)
-                                        st.session_state.feedback_given[feedback_key] = True
+                                        st.session_state.feedback_given[feedback_key] = -1  # 어떤 피드백인지 저장
                                         st.toast("✅ 피드백 감사합니다!", icon="👎")
+                                        st.rerun(scope="app")  # fragment 내부이므로 전체 앱 리런
                         elif sources and chat['answer'] == "💭 답변 준비중...":
                             # 답변 준비중일 때는 팝오버만 표시 (버튼 없음)
                             with st.popover(f"📚 근거 리뷰 ({len(sources)}개)"):
                                 st.caption("💡 AI가 답변을 생성할 때 참고한 리뷰들입니다")
                                 for j, src in enumerate(sources, 1):
-                                    content = src.get("content", "내용 없음")
+                                    content = src.get("text", src.get("content", "내용 없음"))
                                     rating = src.get("rating", "N/A")
                                     try:
                                         rating_int = int(rating)
@@ -1216,11 +1260,18 @@ def render_product_detail_content(product: Product):
             pending_question = st.session_state[pending_key]
 
             try:
+                import time
+                start_time = time.time()
+
                 rag_chain = get_or_create_product_rag_chain(product)
                 if rag_chain:
                     response = rag_chain.query_with_sources(pending_question)
                     answer = response["answer"]
                     sources = response.get("sources", [])
+
+                    # 응답 시간 계산 (ms) 및 로그 저장
+                    response_time_ms = int((time.time() - start_time) * 1000)
+                    save_qa_log(product.name, pending_question, response_time_ms)
                 else:
                     answer = "RAG 시스템을 초기화할 수 없습니다."
                     sources = []
@@ -2026,25 +2077,53 @@ def render_product_qa(product: Product):
             # assistant 메시지에 피드백 버튼 추가
             if message["role"] == "assistant":
                 feedback_key = f"{product_name}_{msg_idx}"
-                if feedback_key not in st.session_state.feedback_given:
-                    # 이전 user 메시지(질문) 찾기
-                    question = ""
-                    if msg_idx > 0 and messages[msg_idx - 1]["role"] == "user":
-                        question = messages[msg_idx - 1]["content"]
+                feedback_value = st.session_state.feedback_given.get(feedback_key)
 
+                # 이전 user 메시지(질문) 찾기
+                question = ""
+                if msg_idx > 0 and messages[msg_idx - 1]["role"] == "user":
+                    question = messages[msg_idx - 1]["content"]
+
+                if feedback_value is not None:
+                    # 피드백 완료 - 핑크 배경으로 선택 상태 표시
+                    col1, col2, col3 = st.columns([1, 1, 6])
+                    with col1:
+                        if feedback_value == 1:
+                            st.markdown(
+                                '<span style="display: inline-block; background-color: #FCE4EC; padding: 4px 10px; border-radius: 8px;">👍</span>',
+                                unsafe_allow_html=True
+                            )
+                        else:
+                            st.markdown(
+                                '<span style="display: inline-block; background-color: #f5f5f5; padding: 4px 10px; border-radius: 8px; opacity: 0.4;">👍</span>',
+                                unsafe_allow_html=True
+                            )
+                    with col2:
+                        if feedback_value == -1:
+                            st.markdown(
+                                '<span style="display: inline-block; background-color: #FCE4EC; padding: 4px 10px; border-radius: 8px;">👎</span>',
+                                unsafe_allow_html=True
+                            )
+                        else:
+                            st.markdown(
+                                '<span style="display: inline-block; background-color: #f5f5f5; padding: 4px 10px; border-radius: 8px; opacity: 0.4;">👎</span>',
+                                unsafe_allow_html=True
+                            )
+                else:
+                    # 피드백 대기
                     col1, col2, col3 = st.columns([1, 1, 6])
                     with col1:
                         if st.button("👍", key=f"helpful_{feedback_key}", help="도움이 됐어요"):
                             save_qa_feedback(product_name, question, message["content"], 1)
-                            st.session_state.feedback_given[feedback_key] = True
+                            st.session_state.feedback_given[feedback_key] = 1
+                            st.toast("✅ 피드백 감사합니다!", icon="👍")
                             st.rerun()
                     with col2:
                         if st.button("👎", key=f"not_helpful_{feedback_key}", help="도움이 안됐어요"):
                             save_qa_feedback(product_name, question, message["content"], -1)
-                            st.session_state.feedback_given[feedback_key] = True
+                            st.session_state.feedback_given[feedback_key] = -1
+                            st.toast("✅ 피드백 감사합니다!", icon="👎")
                             st.rerun()
-                else:
-                    st.caption("✅ 피드백 감사합니다!")
 
     # 사용자 입력 (메시지 수 기반 key로 입력창 리셋)
     if prompt := st.chat_input("이 제품에 대해 질문하세요...", key=f"qa_input_{product_name}_{len(messages)}"):
@@ -2057,6 +2136,9 @@ def render_product_qa(product: Product):
         # AI 응답 생성 (스트리밍)
         with st.chat_message("assistant"):
             try:
+                import time
+                start_time = time.time()
+
                 rag_chain = st.session_state.product_rag_chain
 
                 # 스트리밍 + 출처 가져오기
@@ -2064,6 +2146,12 @@ def render_product_qa(product: Product):
 
                 # 스트리밍 응답 표시
                 answer = st.write_stream(stream)
+
+                # 응답 시간 계산 (ms)
+                response_time_ms = int((time.time() - start_time) * 1000)
+
+                # Q&A 로그 저장
+                save_qa_log(product_name, prompt, response_time_ms)
 
                 # 출처 표시 (개선된 버전)
                 if sources:

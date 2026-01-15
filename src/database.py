@@ -87,6 +87,19 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_feedbacks_product ON qa_feedbacks(product_name)")
 
+    # Q&A 질문 로그 테이블
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS qa_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_name TEXT NOT NULL,
+            question TEXT NOT NULL,
+            response_time_ms INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_qa_logs_product ON qa_logs(product_name)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_qa_logs_created ON qa_logs(created_at)")
+
     conn.commit()
     conn.close()
 
@@ -640,4 +653,114 @@ def get_feedback_stats(product_name: str | None = None) -> dict:
         "helpful": helpful,
         "not_helpful": not_helpful,
         "helpful_rate": round(helpful / total * 100, 1) if total > 0 else 0,
+    }
+
+
+# =============================================================================
+# Q&A 질문 로그
+# =============================================================================
+
+def save_qa_log(
+    product_name: str,
+    question: str,
+    response_time_ms: int | None = None
+) -> int:
+    """Q&A 질문 로그 저장."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO qa_logs (product_name, question, response_time_ms)
+        VALUES (?, ?, ?)
+        """,
+        (product_name, question, response_time_ms),
+    )
+    conn.commit()
+    log_id = cursor.lastrowid
+    conn.close()
+    return log_id
+
+
+def get_qa_metrics(product_name: str | None = None) -> dict:
+    """Q&A 사용 메트릭 조회."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # 총 질문 수
+    if product_name:
+        cursor.execute(
+            "SELECT COUNT(*) FROM qa_logs WHERE product_name = ?",
+            (product_name,),
+        )
+    else:
+        cursor.execute("SELECT COUNT(*) FROM qa_logs")
+    total_questions = cursor.fetchone()[0] or 0
+
+    # 제품별 질문 수 (상위 5개)
+    cursor.execute(
+        """
+        SELECT product_name, COUNT(*) as cnt
+        FROM qa_logs
+        GROUP BY product_name
+        ORDER BY cnt DESC
+        LIMIT 5
+        """
+    )
+    top_products = [{"product": row[0], "count": row[1]} for row in cursor.fetchall()]
+
+    # 평균 응답 시간
+    cursor.execute(
+        "SELECT AVG(response_time_ms) FROM qa_logs WHERE response_time_ms IS NOT NULL"
+    )
+    avg_response_time = cursor.fetchone()[0]
+    avg_response_time = round(avg_response_time) if avg_response_time else None
+
+    # 오늘 질문 수
+    cursor.execute(
+        "SELECT COUNT(*) FROM qa_logs WHERE DATE(created_at) = DATE('now')"
+    )
+    today_questions = cursor.fetchone()[0] or 0
+
+    # 인기 질문 키워드 분석 (제품별일 경우만)
+    top_keywords = []
+    if product_name:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT question FROM qa_logs WHERE product_name = ?",
+            (product_name,),
+        )
+        questions = [row[0] for row in cursor.fetchall()]
+
+        # 키워드 빈도 분석
+        keyword_map = {
+            "배송": ["배송", "도착", "택배"],
+            "품질": ["품질", "퀄리티", "좋은", "괜찮"],
+            "가성비": ["가성비", "가격", "저렴", "비싸"],
+            "사이즈": ["사이즈", "크기", "치수", "맞"],
+            "기능": ["기능", "성능", "작동"],
+        }
+        keyword_counts = {k: 0 for k in keyword_map}
+
+        for q in questions:
+            for keyword, patterns in keyword_map.items():
+                if any(p in q for p in patterns):
+                    keyword_counts[keyword] += 1
+                    break
+
+        # 상위 3개 키워드 (count > 0인 것만)
+        sorted_keywords = sorted(keyword_counts.items(), key=lambda x: x[1], reverse=True)
+        top_keywords = [
+            {"keyword": k, "count": c}
+            for k, c in sorted_keywords[:3]
+            if c > 0
+        ]
+
+    conn.close()
+
+    return {
+        "total_questions": total_questions,
+        "today_questions": today_questions,
+        "avg_response_time_ms": avg_response_time,
+        "top_products": top_products,
+        "top_keywords": top_keywords,
     }
