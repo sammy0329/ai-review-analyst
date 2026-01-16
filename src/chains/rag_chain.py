@@ -47,7 +47,8 @@ class RAGConfig:
 
     # 검색 설정
     top_k: int = 10  # 검색할 최대 리뷰 수
-    min_score: float = 0.3  # 최소 유사도 점수 (이 값 미만은 필터링)
+    min_score: float = 0.2  # 최소 유사도 점수 (이 값 미만은 필터링)
+    min_results: int = 3  # 최소 반환 결과 수 (threshold 미달이어도 보장)
     search_type: str = "similarity"  # "similarity" or "mmr"
 
     # 프롬프트 설정
@@ -121,15 +122,23 @@ class ReviewRAGChain:
 
         # min_score 이상인 결과만 필터링
         filtered_docs = []
+        below_threshold_docs = []
+
         for doc, score in results:
+            doc.metadata["relevance_score"] = score
             if score >= self.config.min_score:
-                # score를 메타데이터에 저장 (나중에 참조용)
-                doc.metadata["relevance_score"] = score
                 filtered_docs.append(doc)
+            else:
+                below_threshold_docs.append(doc)
+
+        # 최소 결과 보장: threshold 미달이어도 min_results개는 반환
+        if len(filtered_docs) < self.config.min_results and below_threshold_docs:
+            needed = self.config.min_results - len(filtered_docs)
+            filtered_docs.extend(below_threshold_docs[:needed])
 
         logger.debug(
-            f"검색 결과: {len(results)}개 중 {len(filtered_docs)}개가 "
-            f"min_score({self.config.min_score}) 이상"
+            f"검색 결과: {len(results)}개 중 {len(filtered_docs)}개 반환 "
+            f"(min_score={self.config.min_score}, min_results={self.config.min_results})"
         )
 
         return filtered_docs
