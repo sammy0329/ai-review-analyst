@@ -35,7 +35,7 @@ class TestRAGConfig:
         assert config.max_tokens == 2048
         assert config.streaming is True
         assert config.top_k == 10
-        assert config.min_score == 0.2
+        assert config.min_score == 0.1
         assert config.min_results == 3
         assert config.search_type == "similarity"
 

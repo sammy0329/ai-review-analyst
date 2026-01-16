@@ -1227,8 +1227,8 @@ def render_product_detail_content(product: Product):
             if st.button("📦 배송", use_container_width=True, key="faq_delivery"):
                 st.session_state.b2c_question = "배송은 어떤가요? 빠른 편인가요?"
         with faq_col2:
-            if st.button("💰 가성비", use_container_width=True, key="faq_value"):
-                st.session_state.b2c_question = "가성비가 좋은 제품인가요?"
+            if st.button("👍 장점", use_container_width=True, key="faq_pros"):
+                st.session_state.b2c_question = "이 제품의 장점은 무엇인가요?"
         with faq_col3:
             if st.button("⚠️ 단점", use_container_width=True, key="faq_cons"):
                 st.session_state.b2c_question = "이 제품의 주요 단점이 뭔가요?"

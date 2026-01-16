@@ -47,7 +47,7 @@ class RAGConfig:
 
     # 검색 설정
     top_k: int = 10  # 검색할 최대 리뷰 수
-    min_score: float = 0.2  # 최소 유사도 점수 (이 값 미만은 필터링)
+    min_score: float = 0.1  # 최소 유사도 점수 (이 값 미만은 필터링)
     min_results: int = 3  # 최소 반환 결과 수 (threshold 미달이어도 보장)
     search_type: str = "similarity"  # "similarity" or "mmr"
 
@@ -104,6 +104,59 @@ class ReviewRAGChain:
         # RAG Chain 구성
         self._chain = self._build_chain()
 
+    def _detect_sentiment_intent(self, question: str) -> tuple[float | None, float | None]:
+        """
+        질문에서 감정 의도를 감지하여 평점 필터 범위 반환.
+
+        Args:
+            question: 사용자 질문
+
+        Returns:
+            (min_rating, max_rating) 튜플. 필터 불필요시 (None, None)
+        """
+        question_lower = question.lower()
+
+        # 장점/긍정 관련 키워드
+        positive_keywords = ["장점", "좋은 점", "좋은점", "만족", "추천", "괜찮", "잘 ", "최고", "좋아"]
+        # 단점/부정 관련 키워드
+        negative_keywords = ["단점", "나쁜 점", "나쁜점", "불만", "별로", "안 좋", "안좋", "문제", "주의"]
+
+        for kw in positive_keywords:
+            if kw in question_lower:
+                logger.debug(f"긍정 의도 감지: '{kw}' → 평점 4+ 필터")
+                return (4.0, None)  # 평점 4 이상
+
+        for kw in negative_keywords:
+            if kw in question_lower:
+                logger.debug(f"부정 의도 감지: '{kw}' → 평점 3- 필터")
+                return (None, 3.0)  # 평점 3 이하
+
+        return (None, None)  # 필터 없음
+
+    def _expand_query(self, question: str) -> str:
+        """
+        쿼리 확장: 딱딱한 표현을 자연스러운 표현으로 변환.
+
+        Args:
+            question: 원본 질문
+
+        Returns:
+            확장된 질문
+        """
+        # 장점 → 좋은 점 (리뷰에서 더 자연스러운 표현)
+        if "장점" in question:
+            expanded = question.replace("장점", "좋은 점")
+            logger.debug(f"쿼리 확장: '{question}' → '{expanded}'")
+            return expanded
+
+        # 단점 → 아쉬운 점
+        if "단점" in question:
+            expanded = question.replace("단점", "아쉬운 점")
+            logger.debug(f"쿼리 확장: '{question}' → '{expanded}'")
+            return expanded
+
+        return question
+
     def _retrieve_filtered(self, question: str) -> list[Document]:
         """
         유사도 기반 필터링을 적용한 문서 검색.
@@ -114,11 +167,40 @@ class ReviewRAGChain:
         Returns:
             필터링된 Document 리스트
         """
+        # 감정 의도 기반 평점 필터 결정
+        min_rating, max_rating = self._detect_sentiment_intent(question)
+
+        # 쿼리 확장 (장점 → 좋은 점 등)
+        search_query = self._expand_query(question)
+
+        # 평점 필터 구성
+        filter_dict = None
+        if min_rating is not None or max_rating is not None:
+            conditions = []
+            if min_rating is not None:
+                conditions.append({"rating": {"$gte": min_rating}})
+            if max_rating is not None:
+                conditions.append({"rating": {"$lte": max_rating}})
+
+            if len(conditions) == 1:
+                filter_dict = conditions[0]
+            else:
+                filter_dict = {"$and": conditions}
+
+            logger.info(f"평점 필터 적용: min={min_rating}, max={max_rating}")
+
         # 유사도 점수와 함께 검색
-        results = self.embedder._vectorstore.similarity_search_with_relevance_scores(
-            query=question,
-            k=self.config.top_k,
-        )
+        if filter_dict:
+            results = self.embedder._vectorstore.similarity_search_with_relevance_scores(
+                query=search_query,
+                k=self.config.top_k,
+                filter=filter_dict,
+            )
+        else:
+            results = self.embedder._vectorstore.similarity_search_with_relevance_scores(
+                query=search_query,
+                k=self.config.top_k,
+            )
 
         # min_score 이상인 결과만 필터링
         filtered_docs = []
