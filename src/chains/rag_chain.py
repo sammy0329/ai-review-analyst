@@ -108,30 +108,18 @@ class ReviewRAGChain:
         """
         질문에서 감정 의도를 감지하여 평점 필터 범위 반환.
 
+        Note: 현재 리뷰 데이터의 평점이 불완전하여 평점 필터는 비활성화됨.
+              쿼리 확장(_expand_query)으로 검색 품질 개선.
+
         Args:
             question: 사용자 질문
 
         Returns:
-            (min_rating, max_rating) 튜플. 필터 불필요시 (None, None)
+            (min_rating, max_rating) 튜플. 현재는 항상 (None, None) 반환.
         """
-        question_lower = question.lower()
-
-        # 장점/긍정 관련 키워드
-        positive_keywords = ["장점", "좋은 점", "좋은점", "만족", "추천", "괜찮", "잘 ", "최고", "좋아"]
-        # 단점/부정 관련 키워드
-        negative_keywords = ["단점", "나쁜 점", "나쁜점", "불만", "별로", "안 좋", "안좋", "문제", "주의"]
-
-        for kw in positive_keywords:
-            if kw in question_lower:
-                logger.debug(f"긍정 의도 감지: '{kw}' → 평점 4+ 필터")
-                return (4.0, None)  # 평점 4 이상
-
-        for kw in negative_keywords:
-            if kw in question_lower:
-                logger.debug(f"부정 의도 감지: '{kw}' → 평점 3- 필터")
-                return (None, 3.0)  # 평점 3 이하
-
-        return (None, None)  # 필터 없음
+        # 평점 데이터가 불완전하여 필터 비활성화
+        # 쿼리 확장으로 검색 품질 개선
+        return (None, None)
 
     def _expand_query(self, question: str) -> str:
         """
