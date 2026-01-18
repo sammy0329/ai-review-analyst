@@ -27,7 +27,7 @@ class CacheConfig:
     persist_directory: str = "./data/chroma_db"
     collection_name: str = "qa_cache"
     embedding_model: str = "text-embedding-3-small"
-    similarity_threshold: float = 0.95  # 캐시 히트 임계값
+    similarity_threshold: float = 0.70  # 캐시 히트 임계값
     ttl_days: int = 7  # 캐시 유효 기간 (일)
 
 
